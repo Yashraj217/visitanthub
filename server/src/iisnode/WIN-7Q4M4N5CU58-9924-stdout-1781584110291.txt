@@ -1,0 +1,2 @@
+MySQL connected successfully
+Server running on port \\.\pipe\c65dd9a2-d492-4733-9174-b4703b5fcbf2

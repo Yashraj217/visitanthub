@@ -1,0 +1,87 @@
+<html>
+<head>
+    <title>iisnode logs</title>
+    <style type="text/css">
+        body
+        {
+            font-family: "Trebuchet MS" , Arial, Helvetica, sans-serif;
+        }
+        table
+        {
+            border-collapse: collapse;
+        }
+        td, th
+        {
+            border: 1px solid lightgray;
+            padding: 3px 7px 2px 7px;
+        }
+        th
+        {
+            text-align: left;
+            padding-top: 5px;
+            padding-bottom: 4px;
+            background-color: Gray;
+            color: #ffffff;
+        }
+        td.stderr
+        {
+            color: Red;
+        }
+    </style>
+</head>
+<body>
+    <table id="logFilesTable">
+        <tr>
+            <th>
+                Computer name
+            </th>
+            <th>
+                PID
+            </th>
+            <th>
+                Type
+            </th>
+            <th>
+                Created
+            </th>
+            <th>
+                Link
+            </th>
+        </tr>
+    </table>
+    <p id="lastUpdated"></p>
+    <script type="text/javascript">
+
+        // this is replaced with actual data at runtime by code in interceptor.js
+        var logFiles = [{"file":"WIN-7Q4M4N5CU58-14284-stderr-1781583149600.txt","computername":"WIN-7Q4M4N5CU58","pid":14284,"type":"stderr","created":1781583149600},{"file":"WIN-7Q4M4N5CU58-14284-stdout-1781583149598.txt","computername":"WIN-7Q4M4N5CU58","pid":14284,"type":"stdout","created":1781583149598},{"file":"WIN-7Q4M4N5CU58-14408-stderr-1781579669329.txt","computername":"WIN-7Q4M4N5CU58","pid":14408,"type":"stderr","created":1781579669329},{"file":"WIN-7Q4M4N5CU58-14408-stdout-1781579669327.txt","computername":"WIN-7Q4M4N5CU58","pid":14408,"type":"stdout","created":1781579669327},{"file":"WIN-7Q4M4N5CU58-15364-stderr-1781580795419.txt","computername":"WIN-7Q4M4N5CU58","pid":15364,"type":"stderr","created":1781580795419},{"file":"WIN-7Q4M4N5CU58-15364-stdout-1781580795417.txt","computername":"WIN-7Q4M4N5CU58","pid":15364,"type":"stdout","created":1781580795417},{"file":"WIN-7Q4M4N5CU58-160-stderr-1781580785652.txt","computername":"WIN-7Q4M4N5CU58","pid":160,"type":"stderr","created":1781580785652},{"file":"WIN-7Q4M4N5CU58-160-stdout-1781580785648.txt","computername":"WIN-7Q4M4N5CU58","pid":160,"type":"stdout","created":1781580785648},{"file":"WIN-7Q4M4N5CU58-16388-stderr-1781581805685.txt","computername":"WIN-7Q4M4N5CU58","pid":16388,"type":"stderr","created":1781581805685},{"file":"WIN-7Q4M4N5CU58-16388-stdout-1781581805683.txt","computername":"WIN-7Q4M4N5CU58","pid":16388,"type":"stdout","created":1781581805683},{"file":"WIN-7Q4M4N5CU58-16600-stderr-1781581585590.txt","computername":"WIN-7Q4M4N5CU58","pid":16600,"type":"stderr","created":1781581585590},{"file":"WIN-7Q4M4N5CU58-16600-stdout-1781581585588.txt","computername":"WIN-7Q4M4N5CU58","pid":16600,"type":"stdout","created":1781581585588},{"file":"WIN-7Q4M4N5CU58-16792-stderr-1781582205463.txt","computername":"WIN-7Q4M4N5CU58","pid":16792,"type":"stderr","created":1781582205463},{"file":"WIN-7Q4M4N5CU58-16792-stdout-1781582205461.txt","computername":"WIN-7Q4M4N5CU58","pid":16792,"type":"stdout","created":1781582205461},{"file":"WIN-7Q4M4N5CU58-17080-stderr-1781581245580.txt","computername":"WIN-7Q4M4N5CU58","pid":17080,"type":"stderr","created":1781581245580},{"file":"WIN-7Q4M4N5CU58-17080-stdout-1781581245579.txt","computername":"WIN-7Q4M4N5CU58","pid":17080,"type":"stdout","created":1781581245579},{"file":"WIN-7Q4M4N5CU58-17988-stderr-1781588585502.txt","computername":"WIN-7Q4M4N5CU58","pid":17988,"type":"stderr","created":1781588585502},{"file":"WIN-7Q4M4N5CU58-17988-stdout-1781588585500.txt","computername":"WIN-7Q4M4N5CU58","pid":17988,"type":"stdout","created":1781588585500},{"file":"WIN-7Q4M4N5CU58-9208-stderr-1781580365421.txt","computername":"WIN-7Q4M4N5CU58","pid":9208,"type":"stderr","created":1781580365421},{"file":"WIN-7Q4M4N5CU58-9208-stdout-1781580365418.txt","computername":"WIN-7Q4M4N5CU58","pid":9208,"type":"stdout","created":1781580365418},{"file":"WIN-7Q4M4N5CU58-9924-stderr-1781584110294.txt","computername":"WIN-7Q4M4N5CU58","pid":9924,"type":"stderr","created":1781584110294},{"file":"WIN-7Q4M4N5CU58-9924-stdout-1781584110291.txt","computername":"WIN-7Q4M4N5CU58","pid":9924,"type":"stdout","created":1781584110291}];
+        var lastUpdated = 1781588586123;
+        var date = new Date();
+
+        date.setTime(lastUpdated);
+        document.getElementById('lastUpdated').innerHTML = 'Index was last updated ' + date;
+
+        logFiles.sort(function (a, b) {
+            return b.created - a.created;
+        });
+
+        var logFilesTable = document.getElementById("logFilesTable");
+        for (var i = 0; i < logFiles.length; i++) {
+            var logFile = logFiles[i];
+            date.setTime(logFile.created);
+            var row = logFilesTable.insertRow(-1);
+            var computerNameCell = row.insertCell(0);
+            var pidCell = row.insertCell(1);
+            var typeCell = row.insertCell(2);
+            var dateCell = row.insertCell(3);
+            var logCell = row.insertCell(4);
+            computerNameCell.innerHTML = logFile.computername;
+            pidCell.innerHTML = logFile.pid.toString();
+            typeCell.innerHTML = logFile.type;
+            typeCell.setAttribute('class', logFile.type);
+            dateCell.innerHTML = date.toString();
+            logCell.innerHTML = '<a href="' + logFile.file + '">log</a>';
+        };
+
+    </script>
+</body>
+</html>

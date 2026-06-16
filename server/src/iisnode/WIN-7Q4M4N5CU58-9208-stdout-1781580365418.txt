@@ -1,0 +1,62 @@
+MySQL connected successfully
+Server running on port \\.\pipe\a3fa8894-da05-4ba8-984f-b5da21d0c905
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Ratan jain* (565656556) would like to meet you.
+Visit Time: 15/6/2026, 7:29:57 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Tanmay singh* (565656565) would like to meet you.
+Visit Time: 15/6/2026, 7:30:12 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Rohila Chadha* (56656565) would like to meet you.
+Visit Time: 15/6/2026, 7:30:28 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Ujagar singh* (8989899898) would like to meet you.
+Visit Time: 15/6/2026, 7:30:44 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*A B Singh* (898989888) would like to meet you.
+Visit Time: 15/6/2026, 7:31:13 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Mandeep Sharma* (98989898) would like to meet you.
+Visit Time: 15/6/2026, 7:31:50 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management

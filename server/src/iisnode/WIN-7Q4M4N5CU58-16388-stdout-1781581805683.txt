@@ -1,0 +1,12 @@
+MySQL connected successfully
+Server running on port \\.\pipe\928fc7f3-f762-4049-8960-1c8c6526efb9
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Nandan Singh* (656666555) would like to meet you.
+Visit Time: 15/6/2026, 7:50:38 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management

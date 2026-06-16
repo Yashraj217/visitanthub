@@ -1,0 +1,12 @@
+MySQL connected successfully
+Server running on port \\.\pipe\5e255766-9d56-47cc-ae64-e9bec33e90c7
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Harsimran Singh Ahluwalia,
+
+*Naman Jha* (936525544) would like to meet you.
+Visit Time: 15/6/2026, 7:17:14 pm
+Purpose: ENT
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management

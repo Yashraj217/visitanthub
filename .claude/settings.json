@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Write-Output \"Directories created\")",
+      "PowerShell(Get-ChildItem \"c:\\\\IIS\\\\2custo\" -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules' } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"c:\\\\IIS\\\\2custo\\\\\",\"\"\\) })",
+      "PowerShell(mysql --version 2>&1)",
+      "PowerShell(mysql -u root -pIndia1234# -e \"SELECT 1;\" 2>&1)",
+      "Read(//c/Program Files/MySQL/**)",
+      "PowerShell($mysqlBin = \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\"; & $mysqlBin -u root \"-pIndia1234#\" -e \"SELECT 1 AS test;\" 2>&1)",
+      "PowerShell(Set-Location \"c:\\\\IIS\\\\2custo\\\\server\"; $job = Start-Job { Set-Location \"c:\\\\IIS\\\\2custo\\\\server\"; node src/app.js 2>&1 }; Start-Sleep -Seconds 3; Receive-Job $job; Stop-Job $job; Remove-Job $job)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:5173\" -UseBasicParsing -TimeoutSec 5)",
+      "PowerShell(Invoke-WebRequest \"http://localhost:5173\" -UseBasicParsing -TimeoutSec 5)",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\IIS\\\\2custo\\\\server\\\\uploads\\\\logos\")",
+      "Bash(node -e ' *)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5000/api/health\" -UseBasicParsing -TimeoutSec 3; Write-Host \"Server: OK -\" $r.Content } catch { Write-Host \"Server: ERROR -\" $_.Exception.Message })",
+      "Bash(mysql -u root -p\"India1234#\" visitor_management -e \"SHOW COLUMNS FROM users LIKE 'employee_id';\")"
+    ]
+  }
+}
