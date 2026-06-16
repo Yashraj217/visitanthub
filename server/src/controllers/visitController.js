@@ -217,16 +217,6 @@ async function updateEmployee(req, res) {
     if (!employees.length) return res.status(400).json({ message: 'Associate not found' });
     const employee = employees[0];
 
-    if (visit.service_id) {
-      const [assignment] = await pool.query(
-        'SELECT id FROM employee_services WHERE employee_id = ? AND service_id = ?',
-        [employee_id, visit.service_id]
-      );
-      if (!assignment.length) {
-        return res.status(400).json({ message: 'Associate is not assigned to this service' });
-      }
-    }
-
     await pool.query('UPDATE visits SET employee_id = ? WHERE id = ?', [employee_id, visit.id]);
     res.json({ message: 'Associate updated', employee });
   } catch (err) {

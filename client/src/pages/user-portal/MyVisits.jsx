@@ -238,8 +238,7 @@ export default function MyVisits() {
   async function startReassign(visit, e) {
     e?.stopPropagation();
     try {
-      const params = visit.service_id ? { service_id: visit.service_id } : {};
-      const { data } = await api.get('/visits/employees', { params });
+      const { data } = await api.get('/visits/employees');
       setReassignList(data);
       setReassignEmpId(visit.employee_id ? String(visit.employee_id) : '');
       setReassignId(visit.id);

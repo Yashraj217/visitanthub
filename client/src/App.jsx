@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Public pages
+import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -90,12 +91,12 @@ function AppRoutes() {
         <Route path="visits" element={<MyVisits />} />
       </Route>
 
-      {/* Root redirect */}
+      {/* Root: landing page for guests, dashboard redirect for logged-in users */}
       <Route path="/" element={
         user?.role === 'super_admin'   ? <Navigate to="/super-admin" replace /> :
         user?.role === 'company_admin' ? <Navigate to="/dashboard" replace /> :
         user?.role === 'company_user'  ? <Navigate to="/user-portal" replace /> :
-        <Navigate to="/login" replace />
+        <LandingPage />
       } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -1,0 +1,22 @@
+MySQL connected successfully
+Server running on port \\.\pipe\5105d111-1cbd-47e3-82de-750418f05964
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Gagan* (989898989) would like to meet you.
+Visit Time: 15/6/2026, 10:39:15 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
+[WhatsApp SKIPPED] No provider configured.
+[WhatsApp MSG] Hello Dr R S Sidhu,
+
+*Tarsem lala* (89898898) would like to meet you.
+Visit Time: 15/6/2026, 10:40:55 pm
+Purpose: Endocrinology
+
+Please respond to confirm your availability.
+
+— SM Sharma Clinic Visitor Management
