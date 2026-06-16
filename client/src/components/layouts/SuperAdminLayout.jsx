@@ -29,7 +29,7 @@ export default function SuperAdminLayout() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="font-semibold text-sm">VMS Super Admin</span>
+        <span className="font-semibold text-sm">VisitantHub Super Admin</span>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -56,7 +56,7 @@ export default function SuperAdminLayout() {
           </button>
 
           <div className="px-6 py-5 border-b border-gray-700">
-            <h1 className="text-xl font-bold text-white">VMS Super Admin</h1>
+            <h1 className="text-xl font-bold text-white">VisitantHub Super Admin</h1>
             <p className="text-gray-400 text-sm mt-1 truncate">{user?.name}</p>
           </div>
 

@@ -45,7 +45,7 @@ export default function Login() {
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl backdrop-blur-sm">
               🏢
             </div>
-            <span className="text-white font-bold text-xl tracking-tight">VisitorApp</span>
+            <span className="text-white font-bold text-xl tracking-tight">VisitantHub</span>
           </div>
         </div>
 
@@ -91,7 +91,7 @@ export default function Login() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-10 lg:hidden">
             <span className="text-2xl">🏢</span>
-            <span className="font-bold text-gray-900 text-lg">VisitorApp</span>
+            <span className="font-bold text-gray-900 text-lg">VisitantHub</span>
           </div>
 
           <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
@@ -168,7 +168,7 @@ export default function Login() {
           </form>
 
           <p className="mt-8 text-center text-sm text-gray-500">
-            New to VisitorApp?{' '}
+            New to VisitantHub?{' '}
             <Link to="/register" className="text-indigo-600 font-medium hover:text-indigo-800">
               Register your office →
             </Link>
