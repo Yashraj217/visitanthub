@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-export const BASE_URL = 'https://visitanthub.com/api';
+export const BASE_URL = 'https://visitor.sonnetinfotech.com/api';
 
 const api = axios.create({ baseURL: BASE_URL });
 

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+client/dist/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/.expo/
+
+# APK binaries
+*.apk
+*.aab
+
+# IIS / iisnode runtime logs
+server/src/iisnode/*.txt
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

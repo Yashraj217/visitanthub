@@ -19,6 +19,7 @@ export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
   const [email,           setEmail]           = useState('');
   const [password,        setPassword]        = useState('');
+  const [showPassword,    setShowPassword]    = useState(false);
   const [loading,         setLoading]         = useState(false);
   const [biometricReady,  setBiometricReady]  = useState(false); // hw + enrolled + saved creds
 
@@ -155,16 +156,25 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Text style={s.label}>Password</Text>
-          <TextInput
-            style={s.input}
-            placeholder="••••••••"
-            placeholderTextColor={COLORS.textMuted}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            onSubmitEditing={handleLogin}
-            returnKeyType="done"
-          />
+          <View style={s.passwordRow}>
+            <TextInput
+              style={s.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor={COLORS.textMuted}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              onSubmitEditing={handleLogin}
+              returnKeyType="done"
+            />
+            <TouchableOpacity style={s.eyeBtn} onPress={() => setShowPassword(v => !v)}>
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={COLORS.textMuted}
+              />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={s.forgotBtn} onPress={() => navigation.navigate('ForgotPassword')}>
             <Text style={s.forgotText}>Forgot password?</Text>
@@ -224,6 +234,12 @@ const s = StyleSheet.create({
   input:         { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
                    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
                    color: COLORS.text, backgroundColor: '#fafafa', marginBottom: 14 },
+  passwordRow:   { flexDirection: 'row', alignItems: 'center', borderWidth: 1,
+                   borderColor: COLORS.border, borderRadius: 10, backgroundColor: '#fafafa',
+                   marginBottom: 14 },
+  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12,
+                   fontSize: 15, color: COLORS.text },
+  eyeBtn:        { paddingHorizontal: 12, paddingVertical: 12 },
   forgotBtn:     { alignSelf: 'flex-end', marginBottom: 20 },
   forgotText:    { fontSize: 13, color: COLORS.primary, fontWeight: '500' },
   btn:           { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 14,
