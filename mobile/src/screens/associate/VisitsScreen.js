@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, RefreshControl, ActivityIndicator, ScrollView,
+  View, Text, FlatList, StyleSheet, TextInput, Platform,
+  TouchableOpacity, RefreshControl, ActivityIndicator, ScrollView, Modal,
 } from 'react-native';
 import { SafeAreaView }    from 'react-native-safe-area-context';
 import { useFocusEffect }  from '@react-navigation/native';
 import { Ionicons }        from '@expo/vector-icons';
+import DateTimePicker      from '@react-native-community/datetimepicker';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth }         from '../../context/AuthContext';
 import { COLORS }          from '../../constants/colors';
@@ -28,6 +29,7 @@ const DATE_FILTERS = [
   { key: 'today',     label: 'Today'     },
   { key: 'yesterday', label: 'Yesterday' },
   { key: 'week',      label: 'This Week' },
+  { key: 'custom',    label: 'Pick Date' },
 ];
 
 export default function AssocVisitsScreen({ navigation, route }) {
@@ -35,26 +37,30 @@ export default function AssocVisitsScreen({ navigation, route }) {
   const { user }       = useAuth();
   const tz             = user?.company_timezone || 'Asia/Kolkata';
 
-  const [visits,      setVisits]      = useState([]);
-  const [page,        setPage]        = useState(1);
-  const [hasMore,     setHasMore]     = useState(false);
-  const [status,      setStatus]      = useState(route.params?.initialFilter || 'pending');
-  const [dateFilter,  setDateFilter]  = useState('all');
-  const [search,      setSearch]      = useState('');
-  const [loading,     setLoading]     = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [refreshing,  setRefreshing]  = useState(false);
+  const [visits,        setVisits]        = useState([]);
+  const [page,          setPage]          = useState(1);
+  const [hasMore,       setHasMore]       = useState(false);
+  const [status,        setStatus]        = useState(route.params?.initialFilter || 'pending');
+  const [dateFilter,    setDateFilter]    = useState('all');
+  const [customDate,    setCustomDate]    = useState(new Date());
+  const [showPicker,    setShowPicker]    = useState(false);
+  const [search,        setSearch]        = useState('');
+  const [loading,       setLoading]       = useState(true);
+  const [loadingMore,   setLoadingMore]   = useState(false);
+  const [refreshing,    setRefreshing]    = useState(false);
 
   const abortRef      = useRef(null);
   const loadIdRef     = useRef(0);
   const statusRef     = useRef(status);
   const dateFilterRef = useRef(dateFilter);
+  const customDateRef = useRef(customDate);
   const searchRef     = useRef(search);
   statusRef.current     = status;
   dateFilterRef.current = dateFilter;
+  customDateRef.current = customDate;
   searchRef.current     = search;
 
-  function buildDateParams(df) {
+  function buildDateParams(df, cd) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
     if (df === 'today') return { date: today };
     if (df === 'yesterday') {
@@ -64,6 +70,9 @@ export default function AssocVisitsScreen({ navigation, route }) {
     if (df === 'week') {
       const from = new Date(); from.setDate(from.getDate() - 6);
       return { date_from: from.toLocaleDateString('en-CA', { timeZone: tz }), date_to: today };
+    }
+    if (df === 'custom' && cd) {
+      return { date: (cd instanceof Date ? cd : new Date(cd)).toLocaleDateString('en-CA', { timeZone: tz }) };
     }
     return {};
   }
@@ -82,7 +91,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
       const params = { page: pg, limit: PAGE_SIZE };
       if (st !== 'all') params.status = st;
       if (sq?.trim())   params.search = sq.trim();
-      Object.assign(params, buildDateParams(df));
+      Object.assign(params, buildDateParams(df, customDateRef.current));
 
       const { data } = await api.get('/visits', { params, signal: ctrl.signal });
       if (myId !== loadIdRef.current) return; // superseded by a newer request
@@ -105,10 +114,10 @@ export default function AssocVisitsScreen({ navigation, route }) {
     }
   }
 
-  // Status or date filter changes → reload from page 1 immediately
+  // Status / date filter / custom date changes → reload from page 1 immediately
   useEffect(() => {
     loadPage(1, { st: status, df: dateFilter, sq: searchRef.current });
-  }, [status, dateFilter]);
+  }, [status, dateFilter, customDate]);
 
   // Search changes → debounced reload from page 1
   useEffect(() => {
@@ -199,12 +208,63 @@ export default function AssocVisitsScreen({ navigation, route }) {
           {DATE_FILTERS.map(d => (
             <TouchableOpacity key={d.key}
               style={[s.chip, dateFilter === d.key && s.chipActive]}
-              onPress={() => setDateFilter(d.key)}>
-              <Text style={[s.chipText, dateFilter === d.key && s.chipTextActive]}>{d.label}</Text>
+              onPress={() => {
+                if (d.key === 'custom') { setDateFilter('custom'); setShowPicker(true); }
+                else setDateFilter(d.key);
+              }}>
+              <Text style={[s.chipText, dateFilter === d.key && s.chipTextActive]}>
+                {d.key === 'custom' && dateFilter === 'custom'
+                  ? customDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : d.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
+
+      {/* Date picker — Android: native inline; iOS: modal */}
+      {showPicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={customDate}
+          mode="date"
+          display="default"
+          maximumDate={new Date()}
+          onChange={(e, selected) => {
+            setShowPicker(false);
+            if (e.type === 'set' && selected) {
+              setCustomDate(selected);
+              setDateFilter('custom');
+            }
+          }}
+        />
+      )}
+      {showPicker && Platform.OS === 'ios' && (
+        <Modal transparent animationType="slide" visible={showPicker}>
+          <View style={s.modalOverlay}>
+            <View style={s.modalCard}>
+              <View style={s.modalHeader}>
+                <Text style={s.modalTitle}>Select Date</Text>
+                <TouchableOpacity onPress={() => setShowPicker(false)}>
+                  <Ionicons name="close" size={22} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={customDate}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={(_, selected) => selected && setCustomDate(selected)}
+              />
+              <TouchableOpacity style={s.modalDone} onPress={() => {
+                setDateFilter('custom');
+                setShowPicker(false);
+              }}>
+                <Text style={s.modalDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
@@ -270,4 +330,14 @@ const s = StyleSheet.create({
   emptyText:      { color: COLORS.textMuted, fontSize: 15, textAlign: 'center' },
   footerRow:      { alignItems: 'center', paddingVertical: 16 },
   footerText:     { color: COLORS.textMuted, fontSize: 13 },
+  modalOverlay:   { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalCard:      { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+                    paddingBottom: 32 },
+  modalHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    paddingHorizontal: 20, paddingVertical: 16,
+                    borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalTitle:     { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  modalDone:      { marginHorizontal: 20, marginTop: 8, backgroundColor: COLORS.primary,
+                    borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalDoneText:  { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

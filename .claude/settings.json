@@ -57,7 +57,8 @@
       "Bash(node c:/IIS/2custo/fix-encoding.js)",
       "Bash(./gradlew assembleRelease)",
       "Bash(./gradlew.bat assembleRelease)",
-      "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/node_modules/axios/package.json'\\); console.log\\(p.version\\)\")"
+      "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/node_modules/axios/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/package.json'\\); const deps={...p.dependencies,...p.devDependencies}; Object.keys\\(deps\\).filter\\(k=>k.includes\\('date'\\)||k.includes\\('picker'\\)||k.includes\\('modal'\\)\\).forEach\\(k=>console.log\\(k,deps[k]\\)\\)\")"
     ]
   }
 }
