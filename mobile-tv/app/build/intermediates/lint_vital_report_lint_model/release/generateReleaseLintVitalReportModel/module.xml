@@ -1,0 +1,18 @@
+<lint-module
+    format="1"
+    dir="C:\IIS\2custo\mobile-tv\app"
+    name=":app"
+    type="APP"
+    maven="VisitantHubTV:app:unspecified"
+    agpVersion="8.9.2"
+    buildFolder="build"
+    bootClassPath="C:\Users\Administrator\AppData\Local\Android\Sdk\platforms\android-36\android.jar;C:\Users\Administrator\AppData\Local\Android\Sdk\build-tools\35.0.0\core-lambda-stubs.jar"
+    javaSourceLevel="17"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

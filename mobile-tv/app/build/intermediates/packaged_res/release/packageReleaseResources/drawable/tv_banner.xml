@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV launcher banner (320x180dp) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <!-- Background -->
+    <path android:fillColor="#0F172A"
+        android:pathData="M0,0 L320,0 L320,180 L0,180 Z"/>
+    <!-- Left accent stripe -->
+    <path android:fillColor="#4F46E5"
+        android:pathData="M0,0 L6,0 L6,180 L0,180 Z"/>
+    <!-- TV icon -->
+    <path android:fillColor="#4F46E5"
+        android:pathData="M20,52 Q20,48 24,48 L90,48 Q94,48 94,52 L94,96 Q94,100 90,100 L20,100 Q16,100 16,96 Z"/>
+    <path android:fillColor="#0F172A"
+        android:pathData="M22,54 L88,54 L88,94 L22,94 Z"/>
+    <!-- Queue lines in screen -->
+    <path android:fillColor="#22C55E" android:pathData="M26,60 L30,60 L30,63 L26,63 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M33,60 L82,60 L82,63 L33,63 Z"/>
+    <path android:fillColor="#EAB308" android:pathData="M26,67 L30,67 L30,70 L26,70 Z"/>
+    <path android:fillColor="#94A3B8" android:pathData="M33,67 L78,67 L78,70 L33,70 Z"/>
+    <path android:fillColor="#EAB308" android:pathData="M26,74 L30,74 L30,77 L26,77 Z"/>
+    <path android:fillColor="#94A3B8" android:pathData="M33,74 L72,74 L72,77 L33,77 Z"/>
+    <!-- Stand -->
+    <path android:fillColor="#4F46E5" android:pathData="M48,100 L62,100 L62,106 L48,106 Z"/>
+    <path android:fillColor="#4F46E5" android:pathData="M38,106 L72,106 L72,110 L38,110 Z"/>
+    <!-- App name text (bold label style using rect shapes) -->
+    <!-- "VisitantHub TV" as a large label area with underline -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M105,68 L305,68 L305,80 L105,80 Z"/>
+    <path android:fillColor="#4F46E5"
+        android:pathData="M105,83 L240,83 L240,86 L105,86 Z"/>
+    <path android:fillColor="#94A3B8"
+        android:pathData="M105,100 L285,100 L285,108 L105,108 Z"/>
+</vector>

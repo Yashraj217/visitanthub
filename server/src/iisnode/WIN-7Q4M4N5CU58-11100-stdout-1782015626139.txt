@@ -1,0 +1,3 @@
+[Redis] connected
+MySQL connected successfully
+Server running on port \\.\pipe\668fe8f5-d803-425c-b9a2-5cf66f4c5e07

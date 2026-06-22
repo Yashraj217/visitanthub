@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../../services/api';
 
 const REFRESH_INTERVAL = 10_000;
 const PAGE_INTERVAL    = 15_000;
 const PAGE_SIZE        = 3;
-const STORAGE_KEY = slug => `display_services_${slug}`;
+const STORAGE_KEY = (slug, screen) => `display_services_${slug}${screen ? `_${screen}` : ''}`;
 
 function Clock() {
   const [now, setNow] = useState(new Date());
@@ -26,7 +26,7 @@ function Clock() {
   );
 }
 
-function ServiceSetup({ services, selected, onSave, onCancel }) {
+function ServiceSetup({ services, selected, screenName, onSave, onCancel }) {
   const [picked, setPicked] = useState(new Set(selected));
   function toggle(name) {
     setPicked(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
@@ -34,8 +34,8 @@ function ServiceSetup({ services, selected, onSave, onCancel }) {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
-        <h2 className="text-white text-lg font-bold mb-1">Configure Display</h2>
-        <p className="text-gray-400 text-sm mb-4">Choose which services appear on this board</p>
+        <h2 className="text-white text-lg font-bold mb-1">Configure Display{screenName ? ` — ${screenName}` : ''}</h2>
+        <p className="text-gray-400 text-sm mb-4">Choose which services appear on this screen. Leave all unchecked to show everything.</p>
         <div className="space-y-2 mb-5 max-h-64 overflow-y-auto pr-1">
           {services.length === 0 && <p className="text-gray-600 text-sm text-center py-4">No services in today's visits yet</p>}
           {services.map(name => (
@@ -59,12 +59,42 @@ function ServiceSetup({ services, selected, onSave, onCancel }) {
   );
 }
 
-function ServiceColumn({ name, serving, waiting, accent }) {
+function fmtWait(mins) {
+  if (mins === null || mins === undefined) return null;
+  if (mins === 0) return { label: 'Next', exact: null };
+  // Compute the wall-clock time when the visitor will likely be served
+  const t = new Date(Date.now() + mins * 60000);
+  const h = t.getHours(), m = t.getMinutes();
+  const exact = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  const label = mins < 60 ? `~${mins} min` : `~${Math.floor(mins / 60)}h ${mins % 60 ? mins % 60 + 'm' : ''}`.trim();
+  return { label, exact };
+}
+
+function fmtTime(t) {
+  if (!t) return '';
+  const [h, m] = t.slice(0, 5).split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+function fmtVisitTime(utcStr, tz) {
+  if (!utcStr) return '';
+  return new Date(utcStr).toLocaleTimeString('en-IN', {
+    timeZone: tz || 'Asia/Kolkata',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+}
+
+function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
+  const location = serving[0]?.employee_location || waiting[0]?.employee_location || null;
   return (
     <div className="flex flex-col overflow-hidden rounded-xl bg-gray-900/50 border border-gray-800">
-      <div className="px-3 py-2 shrink-0 border-b border-gray-800" style={{ backgroundColor: accent + '33' }}>
-        <h3 className="text-sm font-bold text-white tracking-wide truncate">{name}</h3>
+      {/* Header */}
+      <div className="px-3 py-2 shrink-0 border-b border-gray-800 flex items-center justify-between gap-2" style={{ backgroundColor: accent + '33' }}>
+        <h3 className="text-base font-bold text-white tracking-wide truncate">{name}</h3>
+        {location && <span className="text-base text-white/60 shrink-0 truncate max-w-[45%]">📍 {location}</span>}
       </div>
+
+      {/* Now Serving */}
       <div className="px-3 pt-2 pb-1 shrink-0">
         <p className="text-green-500 text-xs font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />Now Serving
@@ -84,7 +114,10 @@ function ServiceColumn({ name, serving, waiting, accent }) {
           </div>
         )}
       </div>
+
       <div className="mx-3 border-t border-gray-800 my-1.5 shrink-0" />
+
+      {/* Waiting queue */}
       <div className="px-3 mb-1 shrink-0">
         <p className="text-yellow-500 text-xs font-semibold uppercase tracking-widest flex items-center justify-between">
           <span className="flex items-center gap-1.5">
@@ -93,23 +126,64 @@ function ServiceColumn({ name, serving, waiting, accent }) {
           {waiting.length > 0 && <span className="text-gray-600 font-normal normal-case">{waiting.length} in queue</span>}
         </p>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-2 scrollbar-hide">
+      <div className="overflow-y-auto px-3 pb-1 scrollbar-hide" style={{ maxHeight: upcoming.length > 0 ? '30%' : undefined, flex: upcoming.length > 0 ? 'none' : 1 }}>
         {waiting.length === 0 ? (
-          <div className="py-3 text-center text-gray-800 text-xs">Queue empty</div>
+          <div className="py-2 text-center text-gray-800 text-xs">Queue empty</div>
         ) : (
           <div className="space-y-1">
-            {waiting.map((v, i) => (
-              <div key={v.id} className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-2 py-1.5">
-                <span className="text-xl font-black text-yellow-400 w-7 text-center shrink-0 leading-none">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-200 truncate">{v.visitor_name}</p>
-                  {v.ref_number && <p className="text-xs text-gray-500 font-mono">#{v.ref_number}</p>}
+            {waiting.map((v, i) => {
+              const wait = fmtWait(v.est_wait_minutes);
+              const isNext = wait?.label === 'Next';
+              const bookedAt = fmtVisitTime(v.visit_time, tz);
+              return (
+                <div key={v.id} className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-2 py-1.5">
+                  <span className="text-lg font-black text-yellow-400 w-6 text-center shrink-0 leading-none">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-200 truncate">{v.visitor_name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {v.ref_number && <p className="text-[10px] text-gray-500 font-mono leading-tight">#{v.ref_number}</p>}
+                      {bookedAt && <p className="text-[10px] text-gray-500 font-mono leading-tight">🕐 {bookedAt}</p>}
+                    </div>
+                  </div>
+                  {wait !== null && (
+                    <div className="shrink-0 text-right">
+                      <p className={`text-[10px] font-bold leading-tight ${isNext ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {isNext ? 'Next' : wait.label}
+                      </p>
+                      {wait.exact && (
+                        <p className="text-[9px] text-gray-500 font-mono leading-tight">~{wait.exact}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Upcoming scheduled visits */}
+      {upcoming.length > 0 && (
+        <>
+          <div className="mx-3 border-t border-gray-800 my-1.5 shrink-0" />
+          <div className="px-3 mb-1 shrink-0">
+            <p className="text-blue-400 text-xs font-semibold uppercase tracking-widest flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Upcoming Today
+            </p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 pb-2 scrollbar-hide">
+            <div className="space-y-1">
+              {upcoming.map(u => (
+                <div key={u.id} className="flex items-center gap-2 bg-blue-950/30 border border-blue-800/30 rounded-lg px-2 py-1.5">
+                  <span className="text-[10px] font-bold text-blue-400 font-mono shrink-0 w-14 text-center">{fmtTime(u.scheduled_time)}</span>
+                  <p className="text-xs text-gray-300 truncate flex-1">{u.visitor_name}</p>
+                  <span className="text-[9px] text-blue-700 shrink-0">📅</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -156,12 +230,20 @@ const SLIDE_STYLES = `
 
 export default function DisplayBoard() {
   const { slug } = useParams();
+  const [searchParams] = useSearchParams();
+  const screen = searchParams.get('screen') || '';
+
+  // If URL contains ?services=A,B,C the filter is URL-controlled (set from admin Settings)
+  const urlServices = searchParams.get('services');
+  const urlFilter   = urlServices ? new Set(urlServices.split(',').filter(Boolean)) : null;
+
   const [board, setBoard]         = useState(null);
   const [error, setError]         = useState(null);
   const [pulse, setPulse]         = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [filter, setFilter]       = useState(() => {
-    try { const s = localStorage.getItem(STORAGE_KEY(slug)); return s ? new Set(JSON.parse(s)) : null; }
+    if (urlFilter) return null; // URL controls the filter; don't load from localStorage
+    try { const s = localStorage.getItem(STORAGE_KEY(slug, screen)); return s ? new Set(JSON.parse(s)) : null; }
     catch { return null; }
   });
 
@@ -198,6 +280,20 @@ export default function DisplayBoard() {
     const id = setInterval(fetchBoard, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchBoard]);
+
+  // Auto-clear stale filter when it no longer matches any service in today's data
+  useEffect(() => {
+    if (urlFilter || !board || !filter || filter.size === 0) return;
+    const currentServices = new Set([
+      ...board.visits.map(v => v.service_name || v.purpose),
+      ...board.upcoming.map(u => u.service_name),
+    ].filter(Boolean));
+    const hasMatch = [...filter].some(f => currentServices.has(f));
+    if (!hasMatch && currentServices.size > 0) {
+      localStorage.removeItem(STORAGE_KEY(slug, screen));
+      setFilter(null);
+    }
+  }, [board]);
 
   // Single interval — reads latest values via refs, never recreated
   useEffect(() => {
@@ -241,8 +337,8 @@ export default function DisplayBoard() {
   }, []); // runs once — reads state via refs
 
   function saveFilter(names) {
-    if (names.length === 0) { localStorage.removeItem(STORAGE_KEY(slug)); setFilter(null); }
-    else { localStorage.setItem(STORAGE_KEY(slug), JSON.stringify(names)); setFilter(new Set(names)); }
+    if (names.length === 0) { localStorage.removeItem(STORAGE_KEY(slug, screen)); setFilter(null); }
+    else { localStorage.setItem(STORAGE_KEY(slug, screen), JSON.stringify(names)); setFilter(new Set(names)); }
     setShowSetup(false);
   }
 
@@ -258,21 +354,36 @@ export default function DisplayBoard() {
     </div>
   );
 
-  const { company, visits } = board;
+  const { company, visits, upcoming = [] } = board;
   const accent   = company.sidebar_color || '#1e40af';
   const kioskUrl = `${window.location.origin}/visit/${company.slug}`;
 
-  const allServices = [...new Set(visits.map(v => v.service_name || v.purpose).filter(Boolean))].sort();
-  const visible = filter && filter.size > 0
-    ? visits.filter(v => filter.has(v.service_name) || filter.has(v.purpose))
-    : visits;
+  const allServices = [...new Set([
+    ...visits.map(v => v.service_name || v.purpose),
+    ...upcoming.map(u => u.service_name),
+  ].filter(Boolean))].sort();
+  // Services actually available for filtering (active visits + upcoming combined)
+
+  const effectiveFilter  = urlFilter || filter; // URL param takes priority over localStorage
+  const activeFilter     = effectiveFilter && effectiveFilter.size > 0;
+  const filteredVisits   = activeFilter ? visits.filter(v => effectiveFilter.has(v.service_name) || effectiveFilter.has(v.purpose)) : visits;
+  const filteredUpcoming = activeFilter ? upcoming.filter(u => effectiveFilter.has(u.service_name)) : upcoming;
+  // If saved filter matches nothing today (stale config), show everything
+  const visible         = filteredVisits.length === 0 && visits.length > 0 ? visits   : filteredVisits;
+  const visibleUpcoming = filteredVisits.length === 0 && visits.length > 0 ? upcoming : filteredUpcoming;
 
   const serviceMap = new Map();
   visible.forEach(v => {
     const key = v.service_name || v.purpose || 'General';
-    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [] });
+    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [] });
     const g = serviceMap.get(key);
     if (v.status === 'approved') g.serving.push(v); else g.waiting.push(v);
+  });
+  // Merge upcoming scheduled visits into service columns (respects filter)
+  visibleUpcoming.forEach(u => {
+    const key = u.service_name || 'General';
+    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [] });
+    serviceMap.get(key).upcoming.push(u);
   });
 
   const allServiceEntries = [...serviceMap.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -290,8 +401,8 @@ export default function DisplayBoard() {
     const svcs = getPageServices(pg);
     return (
       <div key={`svc-${pg}`} className={`${animClass} absolute inset-2 grid grid-cols-3 gap-2`}>
-        {svcs.map(([name, { serving, waiting }]) => (
-          <ServiceColumn key={name} name={name} serving={serving} waiting={waiting} accent={accent} />
+        {svcs.map(([name, { serving, waiting, upcoming: upco }]) => (
+          <ServiceColumn key={name} name={name} serving={serving} waiting={waiting} upcoming={upco || []} accent={accent} tz={company.timezone} />
         ))}
         {Array.from({ length: PAGE_SIZE - svcs.length }).map((_, i) => (
           <div key={i} className="rounded-xl border border-dashed border-gray-900 opacity-20" />
@@ -321,14 +432,18 @@ export default function DisplayBoard() {
           {company.logo_url && (
             <img src={company.logo_url} alt="" className="h-8 w-auto max-w-[100px] object-contain rounded-lg shrink-0" />
           )}
-          <h1 className="text-base font-bold tracking-wide truncate">{company.name}</h1>
+          <h1 className="text-base font-bold tracking-wide truncate">
+            {company.name}{screen ? <span className="font-normal opacity-70 ml-2 text-sm">— {screen}</span> : ''}
+          </h1>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <Clock />
-          <button onClick={() => setShowSetup(true)} title="Configure services"
-            className="w-6 h-6 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors text-xs">
-            ⚙
-          </button>
+          {!urlFilter && (
+            <button onClick={() => setShowSetup(true)} title="Configure services"
+              className="w-6 h-6 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors text-xs">
+              ⚙
+            </button>
+          )}
         </div>
       </header>
 
@@ -375,6 +490,7 @@ export default function DisplayBoard() {
         <ServiceSetup
           services={allServices}
           selected={filter ? [...filter] : []}
+          screenName={screen || null}
           onSave={saveFilter}
           onCancel={() => setShowSetup(false)}
         />

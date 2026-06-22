@@ -1,4 +1,12 @@
 const { pool } = require('../config/database');
+const { cacheDel } = require('../config/redis');
+
+async function invalidateCompanyCache(companyId) {
+  try {
+    const [[co]] = await pool.query('SELECT slug FROM companies WHERE id = ?', [companyId]);
+    if (co?.slug) await cacheDel(`office:${co.slug}`, `booking:${co.slug}`);
+  } catch {}
+}
 
 // ── Services CRUD ──────────────────────────────────────────────────────────
 
@@ -33,6 +41,7 @@ async function createService(req, res) {
       [req.user.company_id, name.trim(), description || null,
        color || '#6366f1', icon || '🏢']
     );
+    await invalidateCompanyCache(req.user.company_id);
     res.status(201).json({ id: r.insertId, message: 'Service created' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -49,6 +58,7 @@ async function updateService(req, res) {
        req.params.id, req.user.company_id]
     );
     if (!r.affectedRows) return res.status(404).json({ message: 'Service not found' });
+    await invalidateCompanyCache(req.user.company_id);
     res.json({ message: 'Updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -62,6 +72,7 @@ async function deleteService(req, res) {
       [req.params.id, req.user.company_id]
     );
     if (!r.affectedRows) return res.status(404).json({ message: 'Service not found' });
+    await invalidateCompanyCache(req.user.company_id);
     res.json({ message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -124,6 +135,7 @@ async function saveFields(req, res) {
       );
     }
     await conn.commit();
+    await invalidateCompanyCache(req.user.company_id);
     res.json({ message: 'Fields saved' });
   } catch (err) {
     await conn.rollback();

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 import { useAuth } from '../../context/AuthContext';
 import { todayInTz, formatInTz } from '../../utils/tz';
 import { exportToExcel } from '../../utils/exportExcel';
@@ -46,6 +47,13 @@ export default function MyVisits() {
   const [detailLoading, setDL]    = useState(false);
   const [hiddenEdits, setHiddenEdits] = useState({});
   const [modalSaving, setModalSaving] = useState(false);
+  const [historyVisitorId, setHistoryVisitorId] = useState(null);
+
+  // Photos
+  const [photos,         setPhotos]         = useState([]);
+  const [photosLoading,  setPhotosLoading]  = useState(false);
+  const [uploadingPhotos,setUploadingPhotos]= useState(false);
+  const [lightbox,       setLightbox]       = useState(null);
 
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const [visibleStdCols, setVisibleStdCols]       = useState(() => loadSet(STD_COLS_KEY, STANDARD_COLS.map(c => c.id)));
@@ -67,7 +75,7 @@ export default function MyVisits() {
   const today = todayInTz(companyTz);
   const [filterFrom, setFilterFrom]       = useState(today);
   const [filterTo,   setFilterTo]         = useState(today);
-  const [filterStatus, setFilterStatus]   = useState('');
+  const [filterStatus, setFilterStatus]   = useState('pending');
   const [filterService, setFilterService] = useState('');
 
   // Load assigned services + hidden-field metadata once on mount
@@ -216,23 +224,62 @@ export default function MyVisits() {
   }
 
   // ── Detail modal ──────────────────────────────────────────────────────────
+  function closeDetail() {
+    setSelected(null);
+    setDetail(null);
+    setPhotos([]);
+    setLightbox(null);
+  }
+
   async function openDetail(visit) {
     setSelected(visit);
     setDetail(null);
     setHiddenEdits({});
+    setPhotos([]);
     setDL(true);
+    setPhotosLoading(true);
     try {
-      const { data } = await api.get(`/visits/${visit.id}`);
-      setDetail(data);
+      const [{ data: visitData }, { data: photoData }] = await Promise.all([
+        api.get(`/visits/${visit.id}`),
+        api.get(`/visits/${visit.id}/photos`),
+      ]);
+      setDetail(visitData);
+      setPhotos(photoData);
       const edits = {};
-      (data.custom_fields || []).filter(f => f.is_hidden).forEach(f => { edits[f.field_id] = f.value || ''; });
+      (visitData.custom_fields || []).filter(f => f.is_hidden).forEach(f => { edits[f.field_id] = f.value || ''; });
       setHiddenEdits(edits);
     } catch {
       toast.error('Failed to load detail');
       setSelected(null);
     } finally {
       setDL(false);
+      setPhotosLoading(false);
     }
+  }
+
+  async function handlePhotoUpload(e) {
+    const files = e.target.files;
+    if (!files?.length || !detail) return;
+    setUploadingPhotos(true);
+    const form = new FormData();
+    Array.from(files).forEach(f => form.append('photos', f));
+    try {
+      const { data } = await api.post(`/visits/${detail.id}/photos`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setPhotos(prev => [...prev, ...data]);
+      toast.success(`${data.length} photo${data.length > 1 ? 's' : ''} uploaded`);
+    } catch { toast.error('Upload failed'); }
+    finally { setUploadingPhotos(false); e.target.value = ''; }
+  }
+
+  async function deletePhoto(photoId) {
+    if (!detail) return;
+    try {
+      await api.delete(`/visits/${detail.id}/photos/${photoId}`);
+      setPhotos(prev => prev.filter(p => p.id !== photoId));
+      setLightbox(null);
+    } catch { toast.error('Delete failed'); }
   }
 
   async function startReassign(visit, e) {
@@ -471,7 +518,10 @@ export default function MyVisits() {
                 {v.ref_number && <p className="text-xs text-gray-400 font-mono mt-1">{v.ref_number}</p>}
                 <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
                   <p>{v.employee_name}{v.designation ? ` — ${v.designation}` : ''}</p>
-                  <p>{v.service_name || v.purpose || '—'} · {fmt(v.visit_time)}</p>
+                  <p>
+                    {v.service_name || v.purpose || '—'} · {fmt(v.visit_time)}
+                    {v.photo_count > 0 && <span className="ml-2 text-indigo-500">📷 {v.photo_count}</span>}
+                  </p>
                 </div>
                 <div className="mt-3 flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
                   {v.status === 'pending' && (<>
@@ -522,7 +572,10 @@ export default function MyVisits() {
                   <tr key={v.id} className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => openDetail(v)}>
                     {showStd('ref_number')    && <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">{v.ref_number || '—'}</td>}
-                    {showStd('visitor_name') && <td className="px-4 py-3 font-medium text-gray-900">{v.visitor_name}</td>}
+                    {showStd('visitor_name') && <td className="px-4 py-3 font-medium text-gray-900">
+                      {v.visitor_name}
+                      {v.photo_count > 0 && <span className="ml-2 text-xs text-indigo-500 font-normal">📷 {v.photo_count}</span>}
+                    </td>}
                     {showStd('mobile')       && <td className="px-4 py-3 text-gray-500">{v.mobile}</td>}
                     {showStd('employee_name') && (
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap" onClick={e => e.stopPropagation()}>
@@ -632,12 +685,12 @@ export default function MyVisits() {
       {/* Detail modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => { setSelected(null); setDetail(null); }}>
+          onClick={closeDetail}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-4 border-b flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-900">Visit Detail</h2>
-              <button onClick={() => { setSelected(null); setDetail(null); }}
+              <button onClick={closeDetail}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             {detailLoading || !detail ? (
@@ -652,7 +705,16 @@ export default function MyVisits() {
                     <p className="text-2xl font-mono font-bold text-indigo-700 mt-1">{detail.ref_number}</p>
                   </div>
                 )}
-                <Row label="Visitor"    value={detail.visitor_name} />
+                <div className="flex gap-2 items-center">
+                  <span className="text-gray-500 w-28 shrink-0">Visitor</span>
+                  <span className="text-gray-900 font-medium flex-1">{detail.visitor_name}</span>
+                  {detail.visitor_id && (
+                    <button onClick={() => setHistoryVisitorId(detail.visitor_id)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium whitespace-nowrap shrink-0">
+                      View History →
+                    </button>
+                  )}
+                </div>
                 <Row label="Mobile"     value={detail.mobile} />
                 {detail.visitor_email && <Row label="Email"   value={detail.visitor_email} />}
                 {detail.address       && <Row label="Address" value={detail.address} />}
@@ -770,10 +832,65 @@ export default function MyVisits() {
                     </button>
                   </div>
                 )}
+
+                {/* Photos */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-semibold text-gray-700">
+                      📷 Photos{photos.length > 0 ? ` (${photos.length})` : ''}
+                    </p>
+                    <label className={`cursor-pointer text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${uploadingPhotos ? 'bg-gray-100 text-gray-400' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>
+                      {uploadingPhotos ? 'Uploading…' : '+ Add Photos'}
+                      <input type="file" accept="image/*" multiple className="hidden"
+                        onChange={handlePhotoUpload} disabled={uploadingPhotos} />
+                    </label>
+                  </div>
+                  {photosLoading ? (
+                    <p className="text-xs text-gray-400 py-2">Loading…</p>
+                  ) : photos.length === 0 ? (
+                    <p className="text-xs text-gray-300 italic">No photos yet</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {photos.map(p => (
+                        <div key={p.id} className="relative group rounded-lg overflow-hidden bg-gray-100 aspect-square">
+                          <img src={p.filename} alt={p.original_name}
+                            className="w-full h-full object-cover cursor-pointer"
+                            onClick={() => setLightbox(p)} />
+                          <button onClick={() => deletePhoto(p.id)}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}>
+          <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setLightbox(null)}
+              className="absolute -top-8 right-0 text-white text-2xl leading-none hover:text-gray-300">✕</button>
+            <img src={lightbox.filename} alt={lightbox.original_name}
+              className="w-full max-h-[80vh] object-contain rounded-xl" />
+            {lightbox.uploaded_by_name && (
+              <p className="text-center text-gray-300 text-sm mt-2">By {lightbox.uploaded_by_name}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {historyVisitorId && (
+        <VisitorHistoryModal
+          visitorId={historyVisitorId}
+          onClose={() => setHistoryVisitorId(null)}
+        />
       )}
     </div>
   );

@@ -58,11 +58,50 @@ CREATE TABLE IF NOT EXISTS employees (
   phone          VARCHAR(20) NOT NULL,
   email          VARCHAR(255),
   designation    VARCHAR(255),
+  location       VARCHAR(255),
   status         ENUM('active','inactive') DEFAULT 'active',
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
   FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+);
+
+-- Associate availability (weekly recurring schedule)
+CREATE TABLE IF NOT EXISTS associate_availability (
+  id            INT PRIMARY KEY AUTO_INCREMENT,
+  company_id    INT NOT NULL,
+  employee_id   INT NOT NULL,
+  day_of_week   TINYINT NOT NULL,
+  start_time    TIME NOT NULL,
+  end_time      TIME NOT NULL,
+  slot_duration INT NOT NULL DEFAULT 30,
+  is_active     TINYINT DEFAULT 1,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (company_id)  REFERENCES companies(id)  ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id)  ON DELETE CASCADE
+);
+
+-- Scheduled visits (advance bookings)
+CREATE TABLE IF NOT EXISTS scheduled_visits (
+  id               INT PRIMARY KEY AUTO_INCREMENT,
+  company_id       INT NOT NULL,
+  employee_id      INT NULL,
+  service_id       INT NULL,
+  service_name     VARCHAR(255),
+  visitor_name     VARCHAR(255) NOT NULL,
+  visitor_mobile   VARCHAR(20) NOT NULL,
+  visitor_email    VARCHAR(255),
+  scheduled_date   DATE NOT NULL,
+  scheduled_time   TIME NOT NULL,
+  purpose          TEXT,
+  status           ENUM('pending','confirmed','cancelled','checked_in','no_show') DEFAULT 'pending',
+  booking_ref      VARCHAR(20) UNIQUE NOT NULL,
+  admin_notes      TEXT,
+  visit_id         INT NULL,
+  created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (company_id)  REFERENCES companies(id)  ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id)  ON DELETE SET NULL
 );
 
 -- Visitors (unique per company by mobile)

@@ -192,10 +192,15 @@ export default function CompanyDashboard() {
                 </div>
                 {seriesData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={seriesData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <BarChart data={seriesData}
+                      margin={{ top: 4, right: 8, left: -20, bottom: period === 'weekly' ? 16 : 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false}
-                             interval={xAxisInterval} />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false}
+                             interval={xAxisInterval}
+                             tick={period === 'weekly'
+                               ? { fontSize: 10, angle: -40, textAnchor: 'end', dy: 4 }
+                               : { fontSize: 11 }}
+                             height={period === 'weekly' ? 48 : 30} />
                       <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <Tooltip content={<BarTooltip />} />
                       <Bar dataKey="count" fill="#6366f1" radius={[4,4,0,0]} maxBarSize={32} />

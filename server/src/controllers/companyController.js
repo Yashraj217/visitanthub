@@ -1,6 +1,14 @@
 const { pool } = require('../config/database');
+const { cacheDel } = require('../config/redis');
 const fs = require('fs');
 const path = require('path');
+
+async function invalidateCompanyCache(companyId) {
+  try {
+    const [[co]] = await pool.query('SELECT slug FROM companies WHERE id = ?', [companyId]);
+    if (co?.slug) await cacheDel(`office:${co.slug}`, `booking:${co.slug}`);
+  } catch {}
+}
 const { localDateToUtcRange } = require('../utils/tz');
 
 // Super admin: list all companies
@@ -85,6 +93,7 @@ async function updateProfile(req, res) {
        timezone || 'UTC',
        req.user.company_id]
     );
+    await invalidateCompanyCache(req.user.company_id);
     res.json({ message: 'Profile updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -157,6 +166,7 @@ async function uploadCompanyLogo(req, res) {
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
     await pool.query('UPDATE companies SET logo_url = ? WHERE id = ?', [logoUrl, req.user.company_id]);
+    await invalidateCompanyCache(req.user.company_id);
     res.json({ logo_url: logoUrl, message: 'Logo uploaded' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -224,6 +234,21 @@ async function getStats(req, res) {
       `SELECT COUNT(*) AS total_employees FROM employees
        WHERE company_id = ? AND status = 'active'`, [cid]
     );
+    const [[{ today_pending }]] = await pool.query(
+      `SELECT COUNT(*) AS today_pending FROM visits
+       WHERE company_id = ? AND status = 'pending' AND visit_time >= ? AND visit_time <= ?`,
+      [cid, todayStart, todayEnd]
+    );
+    const [[{ today_in_progress }]] = await pool.query(
+      `SELECT COUNT(*) AS today_in_progress FROM visits
+       WHERE company_id = ? AND status = 'approved' AND visit_time >= ? AND visit_time <= ?`,
+      [cid, todayStart, todayEnd]
+    );
+    const [[{ today_done }]] = await pool.query(
+      `SELECT COUNT(*) AS today_done FROM visits
+       WHERE company_id = ? AND status = 'completed' AND visit_time >= ? AND visit_time <= ?`,
+      [cid, todayStart, todayEnd]
+    );
     const [[{ pending_visits }]] = await pool.query(
       `SELECT COUNT(*) AS pending_visits FROM visits
        WHERE company_id = ? AND status = 'pending'`, [cid]
@@ -237,7 +262,10 @@ async function getStats(req, res) {
        WHERE v.company_id = ?
        ORDER BY v.created_at DESC LIMIT 5`, [cid]
     );
-    res.json({ total_visits, today_visits, total_employees, pending_visits, recent_visits: recent });
+    res.json({
+      total_visits, total_employees, pending_visits, recent_visits: recent,
+      today_total: today_visits, today_pending, today_in_progress, today_done,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -371,7 +399,7 @@ async function getCharts(req, res) {
 
     res.json({
       daily:      toArr(daily,      k => k.slice(5).replace('-', '/')),
-      weekly:     toArr(weekly,     k => k.replace('W', 'W')),
+      weekly:     toArr(weekly,     k => 'W' + k.slice(6).replace('-', '/')),
       monthly:    toArr(monthly,    k => k.slice(5)),
       quarterly:  toArr(quarterly),
       halfYearly: toArr(halfYearly),

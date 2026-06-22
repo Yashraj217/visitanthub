@@ -1,0 +1,8 @@
+R_DEF: Internal format may change without notice
+local
+color launcher_bg
+drawable ic_launcher_foreground
+drawable tv_banner
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name

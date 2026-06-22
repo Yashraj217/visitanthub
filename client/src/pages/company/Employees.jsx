@@ -3,7 +3,7 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { exportToExcel } from '../../utils/exportExcel';
 
-const emptyForm = { name: '', phone: '', email: '', designation: '', status: 'active', service_ids: [] };
+const emptyForm = { name: '', phone: '', email: '', designation: '', location: '', status: 'active', service_ids: [] };
 const emptyCred = { email: '', password: '' };
 
 export default function Employees() {
@@ -69,6 +69,7 @@ export default function Employees() {
       phone:       emp.phone || '',
       email:       emp.email || '',
       designation: emp.designation || '',
+      location:    emp.location || '',
       status:      emp.status,
       service_ids: emp.service_ids || [],
     });
@@ -190,6 +191,7 @@ export default function Employees() {
                     <p className="font-semibold text-gray-900">{e.name}</p>
                     <p className="text-sm text-gray-500">{e.phone}</p>
                     {e.designation && <p className="text-xs text-gray-400">{e.designation}</p>}
+                    {e.location && <p className="text-xs text-indigo-500">📍 {e.location}</p>}
                   </div>
                   <span className={`badge-${e.status} shrink-0`}>{e.status}</span>
                 </div>
@@ -218,7 +220,7 @@ export default function Employees() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {['Name', 'Phone', 'Designation', 'Services', 'Login', 'Status', 'Actions'].map(h => (
+                {['Name', 'Phone', 'Designation', 'Location', 'Services', 'Login', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-6 py-3 text-left font-medium text-gray-500">{h}</th>
                 ))}
               </tr>
@@ -229,6 +231,7 @@ export default function Employees() {
                   <td className="px-6 py-4 font-medium">{e.name}</td>
                   <td className="px-6 py-4 text-gray-600">{e.phone}</td>
                   <td className="px-6 py-4 text-gray-600">{e.designation || '—'}</td>
+                  <td className="px-6 py-4 text-gray-600">{e.location || '—'}</td>
                   <td className="px-6 py-4">
                     {e.service_names
                       ? <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">{e.service_names}</span>
@@ -259,7 +262,7 @@ export default function Employees() {
                 </tr>
               ))}
               {!employees.length && (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-400">No associates found</td></tr>
+                <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-400">No associates found</td></tr>
               )}
             </tbody>
           </table>
@@ -285,6 +288,7 @@ export default function Employees() {
                 <div><label className="label">Name *</label><input className="input" value={form.name} onChange={set('name')} placeholder="Full name" /></div>
                 <div><label className="label">Phone *</label><input className="input" value={form.phone} onChange={set('phone')} placeholder="Mobile number" /></div>
                 <div><label className="label">Email</label><input type="email" className="input" value={form.email} onChange={set('email')} placeholder="work@company.com" /></div>
+                <div><label className="label">Location</label><input className="input" value={form.location} onChange={set('location')} placeholder="e.g. Room 101, Floor 2" /></div>
                 <div>
                   <label className="label">Designation</label>
                   {designations.length > 0 ? (

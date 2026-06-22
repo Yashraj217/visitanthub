@@ -386,16 +386,12 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 font-sans">
 
       {/* ── Navbar ──────────────────────────────────────────────────────────── */}
-      <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-200 ${
-        navScrolled ? 'bg-white/95 backdrop-blur shadow-sm' : 'bg-transparent'
-      }`}>
+      <header className="fixed top-0 inset-x-0 z-50 bg-white/95 backdrop-blur shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* Logo */}
           <a href="#" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-            className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-              style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>V</div>
-            <span className={`font-bold text-lg ${navScrolled ? 'text-gray-900' : 'text-white'}`}>VisitantHub</span>
+            className="flex items-center">
+            <img src="/VisitantHub_Main_Logo.png" alt="VisitantHub" className="h-14 w-auto" />
           </a>
 
           {/* Desktop nav */}
@@ -403,7 +399,7 @@ export default function LandingPage() {
             {NAV_LINKS.map(l => (
               <a key={l.label} href={l.href}
                 onClick={e => { e.preventDefault(); scrollTo(l.href.slice(1)); }}
-                className={`text-sm font-medium transition-colors hover:text-indigo-500 ${navScrolled ? 'text-gray-600' : 'text-white/80'}`}>
+                className="text-sm font-medium text-gray-600 transition-colors hover:text-indigo-500">
                 {l.label}
               </a>
             ))}
@@ -412,7 +408,7 @@ export default function LandingPage() {
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
             <Link to="/login"
-              className={`text-sm font-medium transition-colors ${navScrolled ? 'text-gray-700 hover:text-indigo-600' : 'text-white/90 hover:text-white'}`}>
+              className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors">
               Sign In
             </Link>
             <Link to="/register"
@@ -424,7 +420,7 @@ export default function LandingPage() {
 
           {/* Mobile hamburger */}
           <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(o => !o)}>
-            <svg className={`w-5 h-5 ${navScrolled ? 'text-gray-700' : 'text-white'}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               {mobileMenuOpen
                 ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 : <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />}
@@ -455,34 +451,33 @@ export default function LandingPage() {
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
-      <section className="relative min-h-screen flex items-center overflow-hidden"
-        style={{ background: 'linear-gradient(145deg, #1e1b4b 0%, #3730a3 50%, #4f46e5 100%)' }}>
+      <section className="relative min-h-screen flex items-center overflow-hidden bg-white">
 
         {/* Decorative blobs */}
-        <div className="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full opacity-10"
-          style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
-        <div className="absolute -bottom-40 -right-40 w-[700px] h-[700px] rounded-full opacity-10"
-          style={{ background: 'radial-gradient(circle, #818cf8 0%, transparent 70%)' }} />
+        <div className="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full opacity-40"
+          style={{ background: 'radial-gradient(circle, #c7d2fe 0%, transparent 70%)' }} />
+        <div className="absolute -bottom-40 -right-40 w-[700px] h-[700px] rounded-full opacity-40"
+          style={{ background: 'radial-gradient(circle, #ddd6fe 0%, transparent 70%)' }} />
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 py-28 lg:py-32">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
 
             {/* ── Left: text + CTAs ── */}
             <div>
-              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm text-indigo-200 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 border border-white/20">
+              <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 border border-indigo-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 Trusted by offices across India
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight mb-6">
                 Visitor Management<br />
                 <span className="text-transparent bg-clip-text"
-                  style={{ backgroundImage: 'linear-gradient(90deg, #a5b4fc, #f0abfc)' }}>
+                  style={{ backgroundImage: 'linear-gradient(90deg, #4f46e5, #7c3aed)' }}>
                   Made Effortless
                 </span>
               </h1>
 
-              <p className="text-indigo-200 text-lg max-w-xl mb-10 leading-relaxed">
+              <p className="text-gray-500 text-lg max-w-xl mb-10 leading-relaxed">
                 VisitantHub streamlines every visitor touchpoint — from self-check-in kiosks and live queue boards
                 to instant WhatsApp alerts and deep analytics.
               </p>
@@ -495,7 +490,7 @@ export default function LandingPage() {
                 </Link>
                 <a href="#features"
                   onClick={e => { e.preventDefault(); scrollTo('features'); }}
-                  className="px-8 py-4 rounded-xl text-base font-semibold text-white bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 transition-colors text-center">
+                  className="px-8 py-4 rounded-xl text-base font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors text-center">
                   See Features
                 </a>
               </div>
@@ -508,9 +503,9 @@ export default function LandingPage() {
                   { val: '< 60s',   label: 'Check-in time' },
                   { val: '5 min',   label: 'Setup time' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-4 border border-white/15 text-center">
-                    <p className="text-2xl font-extrabold text-white">{s.val}</p>
-                    <p className="text-indigo-300 text-xs mt-1">{s.label}</p>
+                  <div key={s.label} className="bg-white rounded-2xl px-4 py-4 border border-gray-200 shadow-sm text-center">
+                    <p className="text-2xl font-extrabold text-gray-900">{s.val}</p>
+                    <p className="text-gray-500 text-xs mt-1">{s.label}</p>
                   </div>
                 ))}
               </div>
@@ -851,9 +846,7 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             {/* Brand */}
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>V</div>
-              <span className="font-bold text-white text-base">VisitantHub</span>
+              <img src="/VisitantHub_Main_Logo.png" alt="VisitantHub" className="h-14 w-auto" />
               <span className="text-gray-600 text-sm">by Sonnet Infotech</span>
             </div>
 

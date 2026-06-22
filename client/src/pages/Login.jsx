@@ -41,12 +41,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-xl backdrop-blur-sm">
-              🏢
-            </div>
-            <span className="text-white font-bold text-xl tracking-tight">VisitantHub</span>
-          </div>
+          <img src="/VisitantHub_Main_Logo.png" alt="VisitantHub" className="h-14 w-auto" />
         </div>
 
         {/* Headline */}
@@ -89,9 +84,8 @@ export default function Login() {
         <div className="w-full max-w-sm">
 
           {/* Mobile logo */}
-          <div className="flex items-center gap-2 mb-10 lg:hidden">
-            <span className="text-2xl">🏢</span>
-            <span className="font-bold text-gray-900 text-lg">VisitantHub</span>
+          <div className="flex items-center mb-10 lg:hidden">
+            <img src="/VisitantHub_Main_Logo.png" alt="VisitantHub" className="h-14 w-auto" />
           </div>
 
           <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>

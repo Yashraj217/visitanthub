@@ -1,41 +1,30 @@
 /**
  * WhatsApp notification service.
- * Currently a placeholder — wire up Twilio or Meta Cloud API using
- * the company's stored credentials (provider + api_key + from number).
+ * Supports Twilio and Meta Cloud API using the company's stored credentials.
+ *
+ * Meta provider: uses pre-approved message templates (business-initiated messages
+ * require templates — plain text only works within a 24-hour customer service window).
+ *
+ * Required Meta templates (create in Meta Business Manager → WhatsApp Manager → Message Templates):
+ *
+ * Template: visit_arrival_notification  (Category: Utility)
+ *   Body: Hello {{1}}, {{2}} ({{3}}) would like to meet you.\nVisit Time: {{4}}\nPurpose: {{5}}\n\nPlease be ready at your workstation.\n\n— {{6}} Visitor Management
+ *   Variables: 1=associate name, 2=visitor name, 3=visitor mobile, 4=visit time, 5=purpose, 6=company name
+ *
+ * Template: visit_approved_notification  (Category: Utility)
+ *   Body: Hello {{1}}, Your visit has been approved!\n\nYou may now proceed to meet {{2}} ({{3}}).\nLocation: {{4}}\nService: {{5}}\nRef: {{6}}\n\n— {{7}}
+ *   Variables: 1=visitor name, 2=associate name, 3=designation, 4=location, 5=service, 6=ref, 7=company name
  */
-async function sendVisitNotification({ company, employee, visitor, visit }) {
-  const message =
-    `Hello ${employee.name},\n\n` +
-    `*${visitor.name}* (${visitor.mobile}) would like to meet you.\n` +
-    `Visit Time: ${new Date(visit.visit_time).toLocaleString('en-IN')}\n` +
-    (visit.purpose ? `Purpose: ${visit.purpose}\n` : '') +
-    `\nPlease respond to confirm your availability.\n\n` +
-    `— ${company.name} Visitor Management`;
 
-  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
-    console.log('[WhatsApp SKIPPED] No provider configured.');
-    console.log('[WhatsApp MSG]', message);
-    return { sent: false, reason: 'no_provider' };
-  }
+// ── Twilio send (plain text — Twilio sandbox supports free-form) ────────────
 
-  if (company.whatsapp_provider === 'twilio') {
-    return sendViaTwilio({ company, employee, message });
-  }
-
-  if (company.whatsapp_provider === 'meta') {
-    return sendViaMeta({ company, employee, message });
-  }
-
-  return { sent: false, reason: 'unsupported_provider' };
-}
-
-async function sendViaTwilio({ company, employee, message }) {
+async function sendViaTwilio({ company, phone, message }) {
   try {
     const [sid, token] = company.whatsapp_api_key.split('|');
     const twilio = require('twilio')(sid, token);
     await twilio.messages.create({
       from: company.whatsapp_from || process.env.TWILIO_WHATSAPP_FROM,
-      to:   `whatsapp:+91${employee.phone}`,
+      to:   `whatsapp:+91${phone}`,
       body: message,
     });
     return { sent: true };
@@ -45,7 +34,9 @@ async function sendViaTwilio({ company, employee, message }) {
   }
 }
 
-async function sendViaMeta({ company, employee, message }) {
+// ── Meta send (template messages required for business-initiated) ───────────
+
+async function sendViaMetaTemplate({ company, phone, templateName, parameters }) {
   try {
     const axios = require('axios');
     const [token, phoneNumberId] = company.whatsapp_api_key.split('|');
@@ -53,17 +44,112 @@ async function sendViaMeta({ company, employee, message }) {
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',
-        to: `91${employee.phone}`,
-        type: 'text',
-        text: { body: message },
+        to: `91${phone}`,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en' },
+          components: [
+            {
+              type: 'body',
+              parameters: parameters.map(text => ({ type: 'text', text: String(text) })),
+            },
+          ],
+        },
       },
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
     return { sent: true };
   } catch (err) {
-    console.error('[WhatsApp Meta error]', err.message);
-    return { sent: false, reason: err.message };
+    console.error('[WhatsApp Meta error]', err.response?.data || err.message);
+    return { sent: false, reason: err.response?.data?.error?.message || err.message };
   }
 }
 
-module.exports = { sendVisitNotification };
+// ── Notification: new visit → notify associate ──────────────────────────────
+
+async function sendVisitNotification({ company, employee, visitor, visit }) {
+  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+    console.log('[WhatsApp SKIPPED] No provider configured.');
+    return { sent: false, reason: 'no_provider' };
+  }
+
+  const visitTime = new Date(visit.visit_time).toLocaleString('en-IN');
+  const purpose   = visit.purpose || visit.service_name || '—';
+
+  if (company.whatsapp_provider === 'twilio') {
+    const message =
+      `Hello ${employee.name},\n\n` +
+      `*${visitor.name}* (${visitor.mobile}) would like to meet you.\n` +
+      `Visit Time: ${visitTime}\n` +
+      `Purpose: ${purpose}\n\n` +
+      `Please be ready at your workstation.\n\n` +
+      `— ${company.name} Visitor Management`;
+    return sendViaTwilio({ company, phone: employee.phone, message });
+  }
+
+  if (company.whatsapp_provider === 'meta') {
+    return sendViaMetaTemplate({
+      company,
+      phone:        employee.phone,
+      templateName: 'visit_arrival_notification',
+      parameters:   [
+        employee.name,
+        visitor.name,
+        visitor.mobile,
+        visitTime,
+        purpose,
+        company.name,
+      ],
+    });
+  }
+
+  return { sent: false, reason: 'unsupported_provider' };
+}
+
+// ── Notification: visit approved → notify visitor ───────────────────────────
+
+async function sendApprovalNotification({ company, employee, visitor, visit }) {
+  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+    console.log('[WhatsApp SKIPPED] No provider configured.');
+    return { sent: false, reason: 'no_provider' };
+  }
+
+  const location    = employee.location || 'Reception';
+  const serviceName = visit.service_name || visit.purpose || '—';
+  const ref         = visit.ref_number || String(visit.id);
+  const designation = employee.designation || 'Associate';
+
+  if (company.whatsapp_provider === 'twilio') {
+    const message =
+      `Hello ${visitor.name},\n\n` +
+      `✅ Your visit has been *approved*!\n\n` +
+      `You may now proceed to meet *${employee.name}* (${designation}).\n` +
+      `📍 Location: ${location}\n` +
+      `Service: ${serviceName}\n` +
+      `Ref: ${ref}\n\n` +
+      `— ${company.name}`;
+    return sendViaTwilio({ company, phone: visitor.mobile, message });
+  }
+
+  if (company.whatsapp_provider === 'meta') {
+    return sendViaMetaTemplate({
+      company,
+      phone:        visitor.mobile,
+      templateName: 'visit_approved_notification',
+      parameters:   [
+        visitor.name,
+        employee.name,
+        designation,
+        location,
+        serviceName,
+        ref,
+        company.name,
+      ],
+    });
+  }
+
+  return { sent: false, reason: 'unsupported_provider' };
+}
+
+module.exports = { sendVisitNotification, sendApprovalNotification };

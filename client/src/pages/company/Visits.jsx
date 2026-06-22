@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import BadgeModal from '../../components/BadgeModal';
+import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 import { useAuth } from '../../context/AuthContext';
 import { exportToExcel } from '../../utils/exportExcel';
 import { formatInTz } from '../../utils/tz';
@@ -37,8 +37,8 @@ export default function Visits() {
   const { user } = useAuth();
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [badgeVisit, setBadgeVisit] = useState(null);
-  const [filters, setFilters] = useState({ status: '', date: '' });
+  const [historyVisitorId, setHistoryVisitorId] = useState(null);
+  const [filters, setFilters] = useState({ status: 'pending', date: '' });
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editEmp, setEditEmp] = useState(false);
@@ -47,6 +47,12 @@ export default function Visits() {
   const [savingEmp, setSavingEmp] = useState(false);
 
   const [hiddenFields, setHiddenFields] = useState([]);
+
+  // Photos
+  const [photos, setPhotos]           = useState([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [lightbox, setLightbox]       = useState(null); // url string
 
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const [visibleCols, setVisibleCols]           = useState(loadCols);
@@ -121,17 +127,49 @@ export default function Visits() {
     setEditEmp(false);
     setEmpList([]);
     setNewEmpId('');
+    setPhotos([]);
   }
 
   async function openDetail(v) {
     setSelected(v);
     setEditEmp(false);
     setDetailLoading(true);
+    setPhotos([]);
     try {
       const { data } = await api.get(`/visits/${v.id}`);
       setSelected(data);
     } catch { /* use row data */ }
     finally { setDetailLoading(false); }
+    // Load photos
+    setPhotosLoading(true);
+    try {
+      const { data } = await api.get(`/visits/${v.id}/photos`);
+      setPhotos(data);
+    } catch { /* ignore */ }
+    finally { setPhotosLoading(false); }
+  }
+
+  async function handlePhotoUpload(e) {
+    const files = e.target.files;
+    if (!files?.length) return;
+    setUploadingPhotos(true);
+    const form = new FormData();
+    Array.from(files).forEach(f => form.append('photos', f));
+    try {
+      const { data } = await api.post(`/visits/${selected.id}/photos`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setPhotos(prev => [...prev, ...data]);
+      toast.success(`${data.length} photo${data.length > 1 ? 's' : ''} uploaded`);
+    } catch { toast.error('Upload failed'); }
+    finally { setUploadingPhotos(false); e.target.value = ''; }
+  }
+
+  async function deletePhoto(photoId) {
+    try {
+      await api.delete(`/visits/${selected.id}/photos/${photoId}`);
+      setPhotos(prev => prev.filter(p => p.id !== photoId));
+    } catch { toast.error('Delete failed'); }
   }
 
   async function startEditEmp() {
@@ -335,18 +373,25 @@ export default function Visits() {
                 {v.ref_number && <p className="text-xs text-gray-400 font-mono mt-1">{v.ref_number}</p>}
                 <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
                   <p>{v.employee_name}{v.designation ? ` — ${v.designation}` : ''}</p>
-                  <p>{v.service_name || '—'} · {new Date(v.visit_time).toLocaleString('en-IN', { hour12:true, day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</p>
+                  <p>
+                    {v.service_name || '—'} · {formatInTz(v.visit_time, companyTz, { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', year: undefined })}
+                    {v.photo_count > 0 && <span className="ml-2 text-indigo-500">📷 {v.photo_count}</span>}
+                  </p>
                 </div>
-                <div className="mt-3 flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+                <div className="mt-3 flex gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
                   {v.status === 'pending' && (<>
-                    <button onClick={() => updateStatus(v.id,'approved')} className="text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 font-medium">Approve</button>
-                    <button onClick={() => updateStatus(v.id,'rejected')} className="text-xs px-3 py-1 rounded-lg bg-red-100 text-red-700 font-medium">Reject</button>
+                    <button onClick={() => updateStatus(v.id,'approved')}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold shadow-sm transition-colors">
+                      ✓ Approve
+                    </button>
+                    <button onClick={() => updateStatus(v.id,'rejected')}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-semibold shadow-sm transition-colors">
+                      ✕ Reject
+                    </button>
                   </>)}
                   {v.status === 'approved' && (
-                    <button onClick={() => updateStatus(v.id,'completed')} className="text-xs px-3 py-1 rounded-lg bg-blue-100 text-blue-700 font-medium">Complete</button>
+                    <button onClick={() => updateStatus(v.id,'completed')} className="text-xs px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium transition-colors">Complete</button>
                   )}
-                  <button onClick={e => { e.stopPropagation(); setBadgeVisit(v); }}
-                    className="text-xs px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-medium">🖨 Badge</button>
                 </div>
               </div>
             ))}
@@ -369,8 +414,8 @@ export default function Visits() {
                   {show('visit_time')   && <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">Visit Time</th>}
                   <th className="px-5 py-3 text-left font-medium text-gray-500">Actions</th>
                   {gridHiddenCols.map(f => (
-                    <th key={f.id} className="px-5 py-3 text-left font-medium text-amber-700 whitespace-nowrap bg-amber-50 border-l border-amber-100">
-                      🔒 {f.field_label}
+                    <th key={f.id} className="px-3 py-3 text-left font-medium text-amber-700 bg-amber-50 border-l border-amber-100 leading-tight w-24">
+                      🔒 {f.field_label.replace(/\bRecd\b/gi, 'Received')}
                     </th>
                   ))}
                 </tr>
@@ -380,33 +425,43 @@ export default function Visits() {
                   <tr key={v.id} className="border-b last:border-0 hover:bg-gray-50 cursor-pointer"
                     onClick={() => openDetail(v)}>
                     {show('ref_number')    && <td className="px-5 py-3 font-mono text-xs text-primary-600 font-semibold whitespace-nowrap">{v.ref_number || '—'}</td>}
-                    {show('visitor_name') && <td className="px-5 py-3 font-medium">{v.visitor_name}</td>}
+                    {show('visitor_name') && <td className="px-5 py-3 font-medium">
+                      <span>{v.visitor_name}</span>
+                      {v.photo_count > 0 && (
+                        <span className="ml-2 text-xs text-indigo-500 font-normal">📷 {v.photo_count}</span>
+                      )}
+                    </td>}
                     {show('mobile')       && <td className="px-5 py-3 text-gray-500">{v.mobile}</td>}
                     {show('employee_name') && <td className="px-5 py-3">{v.employee_name}{v.designation ? ` — ${v.designation}` : ''}</td>}
                     {show('service_name') && <td className="px-5 py-3 text-gray-500">{v.service_name || '—'}</td>}
                     {show('visit_time')   && <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
-                      {new Date(v.visit_time).toLocaleString('en-IN', { hour12:true, day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                      {formatInTz(v.visit_time, companyTz, { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', year: undefined })}
                     </td>}
-                    <td className="px-5 py-3 flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+                    <td className="px-5 py-3 flex gap-2 flex-wrap items-center" onClick={e => e.stopPropagation()}>
                       {v.status === 'pending' && <>
-                        <button onClick={() => updateStatus(v.id,'approved')} className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200">Approve</button>
-                        <button onClick={() => updateStatus(v.id,'rejected')} className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200">Reject</button>
+                        <button onClick={() => updateStatus(v.id,'approved')}
+                          className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-semibold shadow-sm transition-colors">
+                          ✓ Approve
+                        </button>
+                        <button onClick={() => updateStatus(v.id,'rejected')}
+                          className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold shadow-sm transition-colors">
+                          ✕ Reject
+                        </button>
                       </>}
                       {v.status === 'approved' && (
-                        <button onClick={() => updateStatus(v.id,'completed')} className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">Complete</button>
+                        <button onClick={() => updateStatus(v.id,'completed')} className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium transition-colors">Complete</button>
                       )}
-                      <button onClick={() => setBadgeVisit(v)} className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center gap-1">
-                        🖨 Badge
-                      </button>
                     </td>
                     {gridHiddenCols.map(col => {
                       const fv = (v.hidden_fields || []).find(f => f.field_id === col.id);
                       return (
-                        <td key={col.id} className="px-5 py-3 bg-amber-50 border-l border-amber-100 text-xs">
-                          {fv?.value
-                            ? <span className="text-gray-800">{fv.value}</span>
-                            : <span className="text-gray-300 italic">—</span>
-                          }
+                        <td key={col.id} className="px-3 py-3 bg-amber-50 border-l border-amber-100 text-xs w-24 overflow-hidden">
+                          <span className="block truncate">
+                            {fv?.value
+                              ? <span className="text-gray-800">{fv.value}</span>
+                              : <span className="text-gray-300 italic">—</span>
+                            }
+                          </span>
                         </td>
                       );
                     })}
@@ -430,7 +485,7 @@ export default function Visits() {
                     {show('visit_time')   && <td className="px-5 py-2" />}
                     <td className="px-5 py-2" />
                     {gridHiddenCols.map(col => (
-                      <td key={col.id} className="px-5 py-2 bg-amber-100 border-l border-amber-300 text-amber-900 font-bold text-right">
+                      <td key={col.id} className="px-3 py-2 bg-amber-100 border-l border-amber-300 text-amber-900 font-bold text-right w-24">
                         {col.id in colSums
                           ? (colSums[col.id] % 1 === 0
                               ? colSums[col.id].toLocaleString('en-IN')
@@ -447,13 +502,20 @@ export default function Visits() {
         )}
       </div>
 
-      {/* Badge print modal */}
-      {badgeVisit && (
-        <BadgeModal
-          visit={badgeVisit}
-          companyName={user?.company_name || ''}
-          onClose={() => setBadgeVisit(null)}
+      {historyVisitorId && (
+        <VisitorHistoryModal
+          visitorId={historyVisitorId}
+          onClose={() => setHistoryVisitorId(null)}
         />
+      )}
+
+      {/* Badge print modal */}
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-xl shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+          <button onClick={() => setLightbox(null)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 text-white text-lg flex items-center justify-center">✕</button>
+        </div>
       )}
 
       {/* Detail modal */}
@@ -471,14 +533,28 @@ export default function Visits() {
             ) : (
               <>
                 <dl className="space-y-3 text-sm">
+                  {/* Visitor row with history link */}
+                  <div className="flex gap-2 items-start">
+                    <dt className="w-28 font-medium text-gray-500 shrink-0 pt-0.5">Visitor</dt>
+                    <dd className="flex-1 flex items-center gap-2 flex-wrap">
+                      <span className="text-gray-900">{selected.visitor_name}</span>
+                      {selected.visitor_id && (
+                        <button
+                          onClick={() => setHistoryVisitorId(selected.visitor_id)}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium whitespace-nowrap">
+                          View History →
+                        </button>
+                      )}
+                    </dd>
+                  </div>
+
                   {[
-                    ['Ref #',      selected.ref_number || '—'],
-                    ['Visitor',    selected.visitor_name],
                     ['Mobile',     selected.mobile],
                     ['Email',      selected.visitor_email || '—'],
                     ['Address',    selected.address || '—'],
+                    ['Ref #',      selected.ref_number || '—'],
                     ['Service',    selected.service_name || '—'],
-                    ['Visit Time', new Date(selected.visit_time).toLocaleString('en-IN')],
+                    ['Visit Time', formatInTz(selected.visit_time, companyTz)],
                     ['Status',     selected.status],
                     ['WhatsApp',   selected.whatsapp_sent ? '✓ Sent' : '✗ Not sent'],
                   ].map(([k, v]) => (
@@ -559,19 +635,56 @@ export default function Visits() {
                   </div>
                 )}
 
+                {/* Photos section */}
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      📷 Photos {photos.length > 0 && <span className="text-gray-500 normal-case font-normal">({photos.length})</span>}
+                    </p>
+                    <label className={`cursor-pointer text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${uploadingPhotos ? 'bg-gray-100 text-gray-400' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>
+                      {uploadingPhotos ? 'Uploading…' : '+ Add Photos'}
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} disabled={uploadingPhotos} />
+                    </label>
+                  </div>
+
+                  {photosLoading ? (
+                    <p className="text-xs text-gray-400 py-2">Loading…</p>
+                  ) : photos.length === 0 ? (
+                    <p className="text-xs text-gray-300 italic py-1">No photos yet</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 mt-1">
+                      {photos.map(p => (
+                        <div key={p.id} className="relative group rounded-lg overflow-hidden bg-gray-100 aspect-square">
+                          <img
+                            src={p.filename}
+                            alt={p.original_name}
+                            className="w-full h-full object-cover cursor-pointer"
+                            onClick={() => setLightbox(p.filename)}
+                          />
+                          <button
+                            onClick={() => deletePhoto(p.id)}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                            title="Delete">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-2 mt-6 flex-wrap">
                   {selected.status === 'pending' && <>
-                    <button onClick={() => updateStatus(selected.id,'approved')} className="btn-primary flex-1">Approve</button>
+                    <button onClick={() => updateStatus(selected.id,'approved')}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-green-500 hover:bg-green-600 text-white font-semibold shadow-sm transition-colors">
+                      ✓ Approve
+                    </button>
                     <button onClick={() => updateStatus(selected.id,'rejected')}
-                      className="flex-1 px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium transition-colors">Reject</button>
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold shadow-sm transition-colors">
+                      ✕ Reject
+                    </button>
                   </>}
                   {selected.status === 'approved' && (
                     <button onClick={() => updateStatus(selected.id,'completed')} className="btn-primary flex-1">Mark Completed</button>
                   )}
-                  <button onClick={() => setBadgeVisit(selected)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium transition-colors flex items-center justify-center gap-1.5">
-                    🖨 Print Badge
-                  </button>
                   <button onClick={closeDetail} className="btn-secondary flex-1">Close</button>
                 </div>
               </>

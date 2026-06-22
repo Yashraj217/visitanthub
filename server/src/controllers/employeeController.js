@@ -1,6 +1,14 @@
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
+const { cacheDel } = require('../config/redis');
 const { sendUserInvitation } = require('../services/email');
+
+async function invalidateCompanyCache(companyId) {
+  try {
+    const [[co]] = await pool.query('SELECT slug FROM companies WHERE id = ?', [companyId]);
+    if (co?.slug) await cacheDel(`office:${co.slug}`, `booking:${co.slug}`);
+  } catch {}
+}
 
 // Super admin passes company_id as query/body param; company_admin uses their own
 function cid(req) {
@@ -59,7 +67,7 @@ async function getOne(req, res) {
 }
 
 async function create(req, res) {
-  const { name, phone, email, designation, department_id, service_ids = [] } = req.body;
+  const { name, phone, email, designation, location, department_id, service_ids = [] } = req.body;
   if (!name?.trim() || !phone?.trim()) {
     return res.status(400).json({ message: 'Name and phone are required' });
   }
@@ -68,9 +76,9 @@ async function create(req, res) {
   try {
     await conn.beginTransaction();
     const [result] = await conn.query(
-      `INSERT INTO employees (company_id, department_id, name, phone, email, designation)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [companyId, department_id || null, name.trim(), phone.trim(), email || null, designation || null]
+      `INSERT INTO employees (company_id, department_id, name, phone, email, designation, location)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [companyId, department_id || null, name.trim(), phone.trim(), email || null, designation || null, location || null]
     );
     const empId = result.insertId;
     if (service_ids.length) {
@@ -81,6 +89,7 @@ async function create(req, res) {
       );
     }
     await conn.commit();
+    await invalidateCompanyCache(companyId);
     res.status(201).json({ id: empId, message: 'Employee created' });
   } catch (err) {
     await conn.rollback();
@@ -91,16 +100,16 @@ async function create(req, res) {
 }
 
 async function update(req, res) {
-  const { name, phone, email, designation, department_id, status, service_ids = [] } = req.body;
+  const { name, phone, email, designation, location, department_id, status, service_ids = [] } = req.body;
   const companyId = cid(req);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [result] = await conn.query(
       `UPDATE employees
-       SET name=?, phone=?, email=?, designation=?, department_id=?, status=?
+       SET name=?, phone=?, email=?, designation=?, location=?, department_id=?, status=?
        WHERE id = ? AND company_id = ?`,
-      [name, phone, email || null, designation || null, department_id || null, status,
+      [name, phone, email || null, designation || null, location || null, department_id || null, status,
        req.params.id, companyId]
     );
     if (!result.affectedRows) {
@@ -116,6 +125,7 @@ async function update(req, res) {
       );
     }
     await conn.commit();
+    await invalidateCompanyCache(companyId);
     res.json({ message: 'Updated' });
   } catch (err) {
     await conn.rollback();
@@ -132,6 +142,7 @@ async function remove(req, res) {
       ['inactive', req.params.id, cid(req)]
     );
     if (!result.affectedRows) return res.status(404).json({ message: 'Associate not found' });
+    await invalidateCompanyCache(cid(req));
     res.json({ message: 'Employee deactivated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

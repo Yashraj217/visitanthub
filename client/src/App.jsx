@@ -6,8 +6,12 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import DataDeletion from './pages/DataDeletion';
 
 // Super admin pages
 import SuperDashboard from './pages/super-admin/Dashboard';
@@ -20,6 +24,7 @@ import CompanyVisits from './pages/company/Visits';
 import CompanyVisitors from './pages/company/Visitors';
 import CompanySettings from './pages/company/Settings';
 import CompanyServices from './pages/company/Services';
+import Scheduling from './pages/company/Scheduling';
 
 // Company user portal
 import MyVisits from './pages/user-portal/MyVisits';
@@ -30,6 +35,7 @@ import VisitorMobile from './pages/visitor/MobileEntry';
 import VisitorForm from './pages/visitor/VisitorForm';
 import VisitorConfirmation from './pages/visitor/Confirmation';
 import DisplayBoard from './pages/visitor/DisplayBoard';
+import BookingPage from './pages/visitor/BookingPage';
 
 // Layouts
 import SuperAdminLayout from './components/layouts/SuperAdminLayout';
@@ -50,10 +56,14 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public auth */}
-      <Route path="/login"           element={<Login />} />
-      <Route path="/register"        element={<Register />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password"  element={<ResetPassword />} />
+      <Route path="/login"            element={<Login />} />
+      <Route path="/register"         element={<Register />} />
+      <Route path="/verify-email"     element={<VerifyEmail />} />
+      <Route path="/forgot-password"  element={<ForgotPassword />} />
+      <Route path="/reset-password"   element={<ResetPassword />} />
+      <Route path="/privacy-policy"   element={<PrivacyPolicy />} />
+      <Route path="/terms-of-service" element={<TermsOfService />} />
+      <Route path="/data-deletion"    element={<DataDeletion />} />
 
       {/* Visitor kiosk — public */}
       <Route path="/visit/:slug"              element={<VisitorMobile />} />
@@ -62,6 +72,10 @@ function AppRoutes() {
 
       {/* TV display board — public */}
       <Route path="/display/:slug" element={<DisplayBoard />} />
+
+      {/* Advance booking — public */}
+      <Route path="/book/:slug"         element={<BookingPage />} />
+      <Route path="/book/:slug/:action" element={<BookingPage />} />
 
       {/* Super Admin */}
       <Route path="/super-admin" element={
@@ -80,6 +94,7 @@ function AppRoutes() {
         <Route path="visits"      element={<CompanyVisits />} />
         <Route path="visitors"    element={<CompanyVisitors />} />
         <Route path="services"    element={<CompanyServices />} />
+        <Route path="scheduling"  element={<Scheduling />} />
         <Route path="settings"    element={<CompanySettings />} />
       </Route>
 

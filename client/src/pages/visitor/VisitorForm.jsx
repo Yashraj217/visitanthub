@@ -22,6 +22,7 @@ export default function VisitorForm() {
     address:     state?.visitor?.address || '',
     employee_id: '',
     purpose:     '',
+    _hp:         '',
   });
 
   useEffect(() => {
@@ -74,10 +75,11 @@ export default function VisitorForm() {
     setLoading(true);
     try {
       const { data } = await api.post(`/visitors/office/${slug}/visit`, {
-        ...form,
+        name: form.name, mobile: form.mobile, email: form.email, address: form.address,
+        employee_id: form.employee_id, purpose: selectedService?.name || form.purpose,
         service_id:   selectedService?.id || null,
-        purpose:      selectedService?.name || form.purpose,
         field_values: fieldValues,
+        _hp:          form._hp,
       });
       navigate(`/visit/${slug}/confirmation`, {
         state: { result: { ...data, visitor_name: form.name }, company: officeData?.company },
@@ -117,6 +119,10 @@ export default function VisitorForm() {
 
         <div className="card space-y-5">
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Honeypot — bots fill this, humans never see it */}
+            <input type="text" name="website" value={form._hp} onChange={e => setForm(f => ({ ...f, _hp: e.target.value }))}
+              tabIndex={-1} autoComplete="off"
+              style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }} />
 
             {/* Personal info */}
             <div>
@@ -223,6 +229,7 @@ export default function VisitorForm() {
             <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-600">
               <span className="font-medium">Visit Time:</span>{' '}
               {new Date().toLocaleString('en-IN', {
+                timeZone: officeData.company.timezone || 'Asia/Kolkata',
                 hour12: true, day: '2-digit', month: 'short',
                 year: 'numeric', hour: '2-digit', minute: '2-digit',
               })}

@@ -26,14 +26,19 @@ app.use('/api/services',    require('./routes/services'));
 app.use('/api/departments',   require('./routes/departments'));
 app.use('/api/designations', require('./routes/designations'));
 app.use('/api/display',     require('./routes/display'));
+app.use('/api/scheduling',  require('./routes/scheduling'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
 // Serve React build in production; 404 JSON in development
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../../client/dist');
-  app.use(express.static(clientDist));
-  app.get('*', (_, res) => res.sendFile(path.join(clientDist, 'index.html')));
+  // Hashed assets: cache aggressively; index.html: never cache
+  app.use(express.static(clientDist, { index: false }));
+  app.get('*', (_, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
 } else {
   app.use((_, res) => res.status(404).json({ message: 'Route not found' }));
 }

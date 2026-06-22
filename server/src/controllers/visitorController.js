@@ -1,6 +1,20 @@
+const https = require('https');
 const { pool } = require('../config/database');
 const { sendVisitNotification } = require('../services/whatsapp');
 const { localDateToUtcRange } = require('../utils/tz');
+const { cacheGet, cacheSet } = require('../config/redis');
+
+function sendExpoPush({ token, title, body, data }) {
+  const payload = JSON.stringify({ to: token, title, body, data: data || {}, sound: 'default' });
+  const req = https.request({
+    hostname: 'exp.host',
+    path: '/--/api/v2/push/send',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+  });
+  req.write(payload);
+  req.end();
+}
 
 /**
  * Generate and atomically increment the reference number counter.
@@ -62,8 +76,12 @@ async function generateRefNumber(conn, company, service) {
 // Public: get company info + employees + services (with fields) by slug
 async function getCompanyBySlug(req, res) {
   try {
+    const cacheKey = `office:${req.params.slug}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
     const [companies] = await pool.query(
-      `SELECT id, name, slug, logo_url, address, city, state
+      `SELECT id, name, slug, logo_url, address, city, state, timezone
        FROM companies WHERE slug = ? AND status = 'active'`,
       [req.params.slug]
     );
@@ -111,7 +129,32 @@ async function getCompanyBySlug(req, res) {
       [company.id]
     );
 
-    res.json({ company, employees, services });
+    // Today's associate availability
+    const tz = company.timezone || 'Asia/Kolkata';
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const dayOfWeek = new Date(todayStr + 'T12:00:00').getDay(); // 0=Sun…6=Sat
+    const [availRows] = await pool.query(
+      `SELECT aa.employee_id, aa.start_time, aa.end_time,
+              e.name AS employee_name, e.designation
+       FROM associate_availability aa
+       JOIN employees e ON e.id = aa.employee_id
+       WHERE aa.company_id = ? AND aa.day_of_week = ? AND e.status = 'active'
+       ORDER BY e.name, aa.start_time`,
+      [company.id, dayOfWeek]
+    );
+    // Group slots by employee
+    const availMap = new Map();
+    availRows.forEach(r => {
+      if (!availMap.has(r.employee_id)) {
+        availMap.set(r.employee_id, { employee_name: r.employee_name, designation: r.designation, slots: [] });
+      }
+      availMap.get(r.employee_id).slots.push({ start_time: r.start_time, end_time: r.end_time });
+    });
+    const availability = [...availMap.values()];
+
+    const payload = { company, employees, services, availability };
+    await cacheSet(cacheKey, payload, 300); // 5-minute cache
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -149,8 +192,15 @@ async function registerVisit(req, res) {
   const {
     name, mobile, email, address,
     employee_id, purpose,
-    service_id, field_values, // field_values = { field_id: value, ... }
+    service_id, field_values, _hp,
   } = req.body;
+
+  if (_hp) return res.status(201).json({
+    message: 'Visit registered successfully',
+    visit_id: 0, ref_number: 'OK',
+    visit_time: new Date().toISOString(), visit_time_local: '',
+    employee_name: '', service_name: '', whatsapp_sent: false, queue_ahead: 0,
+  });
 
   if (!name || !mobile || !employee_id) {
     return res.status(400).json({ message: 'Name, mobile, and employee are required' });
@@ -273,9 +323,30 @@ async function registerVisit(req, res) {
 
     await conn.commit();
 
-    // Send WhatsApp outside transaction
+    // Send WhatsApp + push notification outside transaction
     const [[visit]] = await pool.query('SELECT * FROM visits WHERE id = ?', [visitId]);
     const result = await sendVisitNotification({ company, employee, visitor, visit });
+
+    // Send Expo push notification to assigned employee + company admins (non-blocking)
+    const pushTitle = `New Visitor — ${resolvedServiceName || 'Walk-in'}`;
+    const pushBody  = `${visitor.name} has checked in${resolvedServiceName ? ' for ' + resolvedServiceName : ''}.`;
+    const pushData  = { visitId };
+
+    pool.query(
+      `SELECT u.push_token FROM users u
+       JOIN employees e ON e.id = ?
+       WHERE u.employee_id = e.id AND u.push_token IS NOT NULL LIMIT 1`,
+      [employee.id]
+    ).then(([[empUser]]) => {
+      if (empUser?.push_token) sendExpoPush({ token: empUser.push_token, title: pushTitle, body: pushBody, data: pushData });
+    }).catch(() => {});
+
+    pool.query(
+      `SELECT push_token FROM users WHERE role = 'company_admin' AND company_id = ? AND push_token IS NOT NULL`,
+      [company.id]
+    ).then(([admins]) => {
+      admins.forEach(a => sendExpoPush({ token: a.push_token, title: pushTitle, body: pushBody, data: pushData }));
+    }).catch(() => {});
     await pool.query(
       'UPDATE visits SET whatsapp_sent = ?, whatsapp_error = ? WHERE id = ?',
       [result.sent ? 1 : 0, result.reason || null, visitId]
@@ -294,15 +365,23 @@ async function registerVisit(req, res) {
       [employee.id, company.id, visitId, todayStart, todayEnd]
     );
 
+    const visitTz = company.timezone || 'Asia/Kolkata';
+    const visit_time_local = new Date(visit.visit_time).toLocaleString('en-IN', {
+      timeZone: visitTz,
+      hour12: true, day: '2-digit', month: 'short',
+      year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+
     res.status(201).json({
       message: 'Visit registered successfully',
-      visit_id:    visitId,
-      ref_number:  refNumber,
-      visit_time:  visit.visit_time,
-      employee_name: employee.name,
-      service_name:  resolvedServiceName,
-      whatsapp_sent: result.sent,
-      queue_ahead:   Number(queue_ahead),
+      visit_id:         visitId,
+      ref_number:       refNumber,
+      visit_time:       visit.visit_time,
+      visit_time_local: visit_time_local,
+      employee_name:    employee.name,
+      service_name:     resolvedServiceName,
+      whatsapp_sent:    result.sent,
+      queue_ahead:      Number(queue_ahead),
     });
   } catch (err) {
     await conn.rollback();
@@ -310,6 +389,43 @@ async function registerVisit(req, res) {
     res.status(500).json({ message: 'Server error' });
   } finally {
     conn.release();
+  }
+}
+
+// Authenticated (admin + associate): get a single visitor's profile + full visit history
+async function getVisitorHistory(req, res) {
+  const { visitor_id } = req.params;
+  const company_id = req.user.company_id;
+  try {
+    const [[visitor]] = await pool.query(
+      `SELECT v.id, v.name, v.mobile, v.email, v.address, v.created_at,
+              COUNT(vis.id) AS total_visits,
+              MAX(vis.visit_time) AS last_visit
+       FROM visitors v
+       LEFT JOIN visits vis ON vis.visitor_id = v.id AND vis.company_id = v.company_id
+       WHERE v.id = ? AND v.company_id = ?
+       GROUP BY v.id`,
+      [visitor_id, company_id]
+    );
+    if (!visitor) return res.status(404).json({ message: 'Visitor not found' });
+
+    const [visits] = await pool.query(
+      `SELECT v.id, v.ref_number, v.visit_time, v.status, v.service_name, v.purpose,
+              emp.name AS employee_name, emp.designation,
+              COUNT(p.id) AS photo_count
+       FROM visits v
+       JOIN employees emp ON emp.id = v.employee_id
+       LEFT JOIN visit_photos p ON p.visit_id = v.id
+       WHERE v.visitor_id = ? AND v.company_id = ?
+       GROUP BY v.id
+       ORDER BY v.visit_time DESC`,
+      [visitor_id, company_id]
+    );
+
+    res.json({ visitor, visits });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 }
 
@@ -331,4 +447,4 @@ async function listVisitors(req, res) {
   }
 }
 
-module.exports = { getCompanyBySlug, checkMobile, registerVisit, listVisitors };
+module.exports = { getCompanyBySlug, checkMobile, registerVisit, listVisitors, getVisitorHistory };

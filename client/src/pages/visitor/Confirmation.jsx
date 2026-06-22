@@ -1,12 +1,9 @@
-import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import BadgeModal from '../../components/BadgeModal';
 
 export default function Confirmation() {
   const { slug } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
-  const [showBadge, setShowBadge] = useState(false);
 
   const result  = state?.result;
   const company = state?.company;
@@ -79,7 +76,8 @@ export default function Confirmation() {
             <div className="flex justify-between">
               <dt className="text-gray-500">Visit Time</dt>
               <dd className="font-medium text-gray-900">
-                {new Date(result.visit_time).toLocaleString('en-IN', {
+                {new Date().toLocaleString('en-IN', {
+                  timeZone: company?.timezone || 'Asia/Kolkata',
                   hour12: true, day: '2-digit', month: 'short',
                   year: 'numeric', hour: '2-digit', minute: '2-digit'
                 })}
@@ -105,31 +103,12 @@ export default function Confirmation() {
         )}
 
         <button
-          onClick={() => setShowBadge(true)}
-          className="w-full mb-3 py-3 rounded-xl text-base font-semibold text-white flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, #4f46e5, #6366f1)' }}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4H9v4a1 1 0 001 1zm1-4h4m-4-8V4a1 1 0 00-1-1H9a1 1 0 00-1 1v4h8z" />
-          </svg>
-          Print Visitor Badge
-        </button>
-
-        <button
           onClick={() => navigate(`/visit/${slug}`, { replace: true })}
           className="btn-secondary w-full py-3 text-base"
         >
           Done
         </button>
         {company && <p className="text-gray-400 text-xs mt-4">Thank you for visiting {company.name}</p>}
-
-        {showBadge && (
-          <BadgeModal
-            visit={result}
-            companyName={company?.name || ''}
-            onClose={() => setShowBadge(false)}
-          />
-        )}
       </div>
     </div>
   );

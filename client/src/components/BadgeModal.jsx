@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
-export default function BadgeModal({ visit, companyName, onClose }) {
+export default function BadgeModal({ visit, companyName, companyTz, onClose }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  const tz = companyTz || 'Asia/Kolkata';
   const time = new Date(visit.visit_time || Date.now()).toLocaleString('en-IN', {
+    timeZone: tz,
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });

@@ -1,8 +1,9 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const slugify = require('slugify');
 const { pool } = require('../config/database');
-const { sendWelcomeEmail, sendPasswordResetOTP } = require('../services/email');
+const { sendVerificationEmail, sendPasswordResetOTP } = require('../services/email');
 
 function signToken(user) {
   return jwt.sign(
@@ -100,10 +101,13 @@ async function register(req, res) {
       return res.status(409).json({ message: 'An account with this admin email already exists' });
     }
 
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     const [companyResult] = await conn.query(
-      `INSERT INTO companies (name, slug, email, phone, address, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [company_name.trim(), slug, company_email.toLowerCase(), company_phone, company_address]
+      `INSERT INTO companies (name, slug, email, phone, address, status, email_verify_token, email_verify_expires)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [company_name.trim(), slug, company_email.toLowerCase(), company_phone, company_address, verifyToken, verifyExpires]
     );
 
     const hashed = await bcrypt.hash(admin_password, 10);
@@ -115,15 +119,19 @@ async function register(req, res) {
 
     await conn.commit();
 
-    // Send welcome email (non-blocking)
-    sendWelcomeEmail({
+    const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+    const verifyUrl = `${CLIENT_URL}/verify-email?token=${verifyToken}`;
+
+    // Send verification email (non-blocking)
+    sendVerificationEmail({
       companyName: company_name.trim(),
       adminName:   admin_name.trim(),
       adminEmail:  admin_email.toLowerCase(),
-    }).catch(err => console.error('[EMAIL] Welcome email failed:', err.message));
+      verifyUrl,
+    }).catch(err => console.error('[EMAIL] Verification email failed:', err.message));
 
     res.status(201).json({
-      message: 'Registration successful. Your account is pending approval by the administrator.',
+      message: 'Registration successful. Please check your email to verify your account.',
     });
   } catch (err) {
     await conn.rollback();
@@ -307,4 +315,40 @@ async function impersonate(req, res) {
   }
 }
 
-module.exports = { login, register, getMe, changePassword, forgotPassword, resetPassword, impersonate };
+async function verifyEmail(req, res) {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ message: 'Verification token is required' });
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id FROM companies
+       WHERE email_verify_token = ? AND email_verify_expires > NOW() AND status = 'pending'`,
+      [token]
+    );
+    if (!rows.length) {
+      return res.status(400).json({ message: 'This verification link is invalid or has expired.' });
+    }
+    await pool.query(
+      `UPDATE companies SET status = 'active', email_verify_token = NULL, email_verify_expires = NULL WHERE id = ?`,
+      [rows[0].id]
+    );
+    res.json({ message: 'Email verified! Your account is now active. You can log in.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function savePushToken(req, res) {
+  const { push_token } = req.body;
+  if (!push_token) return res.status(400).json({ message: 'push_token is required' });
+  try {
+    await pool.query('UPDATE users SET push_token = ? WHERE id = ?', [push_token, req.user.id]);
+    res.json({ message: 'Push token saved' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { login, register, verifyEmail, getMe, changePassword, forgotPassword, resetPassword, impersonate, savePushToken };

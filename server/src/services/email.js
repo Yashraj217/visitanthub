@@ -184,4 +184,52 @@ async function sendPasswordResetOTP({ userName, userEmail, otp }) {
   return sendMail({ to: userEmail, subject: `${otp} is your ${APP_NAME} password reset code`, html });
 }
 
-module.exports = { sendWelcomeEmail, sendUserInvitation, sendPasswordResetOTP };
+// ── Verification email — sent when a new company registers ────────────────
+async function sendVerificationEmail({ companyName, adminName, adminEmail, verifyUrl }) {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#6366f1,#4f46e5);padding:36px 40px;text-align:center;">
+            <p style="margin:0;font-size:32px;">✉️</p>
+            <h1 style="margin:12px 0 4px;color:#fff;font-size:22px;font-weight:700;">Verify your email</h1>
+            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">One click to activate your ${APP_NAME} account</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 16px;color:#374151;font-size:15px;">Hi <strong>${adminName}</strong>,</p>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">
+              Thank you for registering <strong>${companyName}</strong> on ${APP_NAME}.
+              Click the button below to verify your email and activate your account instantly.
+            </p>
+            <div style="text-align:center;margin-bottom:28px;">
+              <a href="${verifyUrl}" style="display:inline-block;background:#6366f1;color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Verify Email &amp; Activate Account</a>
+            </div>
+            <div style="background:#f0f0ff;border-left:4px solid #6366f1;border-radius:6px;padding:14px 18px;margin-bottom:24px;">
+              <p style="margin:0;color:#4338ca;font-size:13px;">Or paste this link into your browser:</p>
+              <p style="margin:6px 0 0;word-break:break-all;color:#6366f1;font-size:12px;">${verifyUrl}</p>
+            </div>
+            <p style="margin:0;color:#ef4444;font-size:13px;font-weight:500;">⏰ This link expires in <strong>24 hours</strong>.</p>
+            <p style="margin:12px 0 0;color:#9ca3af;font-size:12px;">If you did not register, please ignore this email.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return sendMail({ to: adminEmail, subject: `Verify your email — ${APP_NAME}`, html });
+}
+
+module.exports = { sendWelcomeEmail, sendVerificationEmail, sendUserInvitation, sendPasswordResetOTP };

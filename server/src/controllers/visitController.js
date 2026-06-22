@@ -1,8 +1,9 @@
 const { pool } = require('../config/database');
 const { localDateToUtcRange } = require('../utils/tz');
+const { sendApprovalNotification } = require('../services/whatsapp');
 
 async function list(req, res) {
-  const { status, date, date_from, date_to, employee_id, service_id } = req.query;
+  const { status, date, date_from, date_to, employee_id, service_id, search } = req.query;
   const cid = req.user.role === 'super_admin' ? req.query.company_id : req.user.company_id;
 
   // Resolve company timezone for date filtering
@@ -22,9 +23,10 @@ async function list(req, res) {
 
   let sql = `SELECT v.id, v.ref_number, v.visit_time, v.status, v.whatsapp_sent,
                     v.service_id, v.service_name, v.purpose, v.notes,
-                    v.employee_id,
+                    v.employee_id, v.visitor_id,
                     vis.name AS visitor_name, vis.mobile, vis.email AS visitor_email,
-                    emp.name AS employee_name, emp.designation
+                    emp.name AS employee_name, emp.designation,
+                    (SELECT COUNT(*) FROM visit_photos p WHERE p.visit_id = v.id) AS photo_count
                     ${hiddenFieldsSub}
              FROM visits v
              JOIN visitors vis ON vis.id = v.visitor_id
@@ -46,7 +48,10 @@ async function list(req, res) {
 
   // company_user: always restrict to own visits — ignores any employee_id query param
   if (req.user.role === 'company_user') {
-    if (!req.user.employee_id) return res.json([]);
+    if (!req.user.employee_id) {
+      const pg = req.query.page ? 1 : null;
+      return res.json(pg !== null ? { visits: [], hasMore: false, page: 1 } : []);
+    }
     sql += ' AND v.employee_id = ?';
     params.push(req.user.employee_id);
   } else if (employee_id) {
@@ -54,16 +59,36 @@ async function list(req, res) {
     params.push(employee_id);
   }
 
-  sql += ' ORDER BY v.visit_time ASC LIMIT 200';
+  if (search?.trim()) {
+    const like = `%${search.trim()}%`;
+    sql += ' AND (vis.name LIKE ? OR vis.mobile LIKE ? OR v.ref_number LIKE ? OR v.service_name LIKE ?)';
+    params.push(like, like, like, like);
+  }
+
+  // Pagination: ?page=N&limit=M  →  paginated response { visits, hasMore, page }
+  // No page param  →  legacy flat-array response (keeps web admin working)
+  const pg   = req.query.page ? Math.max(1, parseInt(req.query.page) || 1) : null;
+  const pgSz = Math.min(50, parseInt(req.query.limit) || 20);
+
+  if (pg !== null) {
+    sql += ` ORDER BY v.visit_time ASC LIMIT ${pgSz + 1} OFFSET ${(pg - 1) * pgSz}`;
+  } else {
+    sql += ' ORDER BY v.visit_time ASC LIMIT 200';
+  }
 
   try {
     const [rows] = await pool.query(sql, params);
-    res.json(rows.map(r => ({
+    const mapRow = r => ({
       ...r,
       hidden_fields: r.hidden_fields
         ? (typeof r.hidden_fields === 'string' ? JSON.parse(r.hidden_fields) : r.hidden_fields)
         : undefined,
-    })));
+    });
+    if (pg !== null) {
+      const hasMore = rows.length > pgSz;
+      return res.json({ visits: rows.slice(0, pgSz).map(mapRow), hasMore, page: pg });
+    }
+    res.json(rows.map(mapRow));
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -115,7 +140,9 @@ async function updateStatus(req, res) {
     return res.status(400).json({ message: 'Invalid status' });
   }
   try {
-    let updateSql = 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
+    let updateSql = status === 'approved'
+      ? 'UPDATE visits SET status = ?, notes = ?, approved_at = NOW() WHERE id = ? AND company_id = ?'
+      : 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
     const updateParams = [status, notes || null, req.params.id, req.user.company_id];
     if (req.user.role === 'company_user') {
       updateSql += ' AND employee_id = ?';
@@ -123,6 +150,34 @@ async function updateStatus(req, res) {
     }
     const [result] = await pool.query(updateSql, updateParams);
     if (!result.affectedRows) return res.status(404).json({ message: 'Visit not found' });
+
+    // Fire approval WhatsApp to visitor (non-blocking)
+    if (status === 'approved') {
+      pool.query(
+        `SELECT v.id, v.ref_number, v.visit_time, v.service_name, v.purpose,
+                vis.name AS visitor_name, vis.mobile AS visitor_mobile,
+                emp.name AS emp_name, emp.designation, emp.location,
+                c.name AS company_name, c.whatsapp_provider, c.whatsapp_api_key, c.whatsapp_from
+         FROM visits v
+         JOIN visitors  vis ON vis.id = v.visitor_id
+         JOIN employees emp ON emp.id = v.employee_id
+         JOIN companies c   ON c.id   = v.company_id
+         WHERE v.id = ?`,
+        [req.params.id]
+      ).then(([rows]) => {
+        if (!rows.length) return;
+        const r = rows[0];
+        sendApprovalNotification({
+          company:  { name: r.company_name, whatsapp_provider: r.whatsapp_provider,
+                      whatsapp_api_key: r.whatsapp_api_key, whatsapp_from: r.whatsapp_from },
+          employee: { name: r.emp_name, designation: r.designation, location: r.location },
+          visitor:  { name: r.visitor_name, mobile: r.visitor_mobile },
+          visit:    { id: r.id, ref_number: r.ref_number, visit_time: r.visit_time,
+                      service_name: r.service_name, purpose: r.purpose },
+        }).catch(err => console.error('[Approval notification error]', err.message));
+      }).catch(err => console.error('[Approval fetch error]', err.message));
+    }
+
     res.json({ message: 'Status updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

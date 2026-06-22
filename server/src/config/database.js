@@ -7,9 +7,15 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'visitor_management',
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 50,
   queueLimit: 0,
   timezone: '+00:00',
+});
+
+// Force every new MySQL connection to use UTC so CURRENT_TIMESTAMP and
+// all TIMESTAMP reads/writes are in UTC, matching what mysql2 expects.
+pool.pool.on('connection', (conn) => {
+  conn.query("SET time_zone = '+00:00'");
 });
 
 async function testConnection() {

@@ -494,8 +494,73 @@ function RefTab({ profile, onSaved }) {
   );
 }
 
+function copyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => toast.success('Copied!'));
+  } else {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    toast.success('Copied!');
+  }
+}
+
 function KioskTab({ profile, kioskUrl }) {
-  const canvasRef = useRef(null);
+  const baseDisplayUrl = `${window.location.origin}/display/${profile.slug}`;
+
+  const SCREENS_KEY = `tv_screens_${profile.slug}`;
+  // screens: [{ name: string, services: string[] }]
+  const [screens, setScreens] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SCREENS_KEY) || '[]');
+      // migrate old format (plain strings) to objects
+      return raw.map(s => typeof s === 'string' ? { name: s, services: [] } : s);
+    } catch { return []; }
+  });
+  const [newScreen, setNewScreen]   = useState('');
+  const [editingIdx, setEditingIdx] = useState(null); // which screen is expanded for editing
+  const [services, setServices]     = useState([]);   // all company services
+
+  useEffect(() => {
+    api.get('/services').then(({ data }) => setServices(data.map(s => s.name))).catch(() => {});
+  }, []);
+
+  function saveScreens(updated) {
+    setScreens(updated);
+    localStorage.setItem(SCREENS_KEY, JSON.stringify(updated));
+  }
+
+  function addScreen() {
+    const name = newScreen.trim();
+    if (!name || screens.some(s => s.name === name)) return;
+    saveScreens([...screens, { name, services: [] }]);
+    setNewScreen('');
+  }
+
+  function removeScreen(idx) {
+    const updated = screens.filter((_, i) => i !== idx);
+    saveScreens(updated);
+    if (editingIdx === idx) setEditingIdx(null);
+  }
+
+  function toggleService(idx, svc) {
+    const screen = screens[idx];
+    const has = screen.services.includes(svc);
+    const updated = screens.map((s, i) => i !== idx ? s : {
+      ...s, services: has ? s.services.filter(x => x !== svc) : [...s.services, svc],
+    });
+    saveScreens(updated);
+  }
+
+  function screenUrl(sc) {
+    let url = `${baseDisplayUrl}?screen=${encodeURIComponent(sc.name)}`;
+    if (sc.services.length > 0) url += `&services=${encodeURIComponent(sc.services.join(','))}`;
+    return url;
+  }
 
   function downloadPNG() {
     // Use the hidden high-res canvas (600px) for PNG export
@@ -574,38 +639,110 @@ function KioskTab({ profile, kioskUrl }) {
         </div>
 
         <div className="flex-1 space-y-4">
-          {/* URL row */}
+          {/* Kiosk URL */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-1">Kiosk URL</p>
+            <p className="text-xs font-medium text-gray-500 mb-1">Kiosk URL <span className="text-gray-400 font-normal">(tablet at reception)</span></p>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs bg-gray-50 border rounded-lg px-3 py-2 text-gray-700 break-all">{kioskUrl}</code>
-              <button
-                type="button"
-                onClick={() => { navigator.clipboard.writeText(kioskUrl); toast.success('Copied!'); }}
-                className="btn-secondary text-xs py-2 px-3 shrink-0"
-              >Copy</button>
+              <button type="button" onClick={() => copyText(kioskUrl)} className="btn-secondary text-xs py-2 px-3 shrink-0">Copy</button>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <a href={kioskUrl} target="_blank" rel="noreferrer" className="btn-primary text-xs py-1.5 px-3">Open Kiosk ↗</a>
+              <button type="button" onClick={downloadPNG} className="btn-secondary text-xs py-1.5 px-3">⬇ Download PNG</button>
+              <button type="button" onClick={printQR} className="btn-secondary text-xs py-1.5 px-3">🖨 Print</button>
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2">
-            <a href={kioskUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm py-2 px-4">
-              Open Kiosk ↗
-            </a>
-            <button type="button" onClick={downloadPNG} className="btn-secondary text-sm py-2 px-4">
-              ⬇ Download PNG
-            </button>
-            <button type="button" onClick={printQR} className="btn-secondary text-sm py-2 px-4">
-              🖨 Print QR Code
-            </button>
+          {/* TV Screens */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-medium text-gray-500">
+                TV Screens <span className="text-gray-400 font-normal">(each screen can show different services)</span>
+              </p>
+            </div>
+
+            {/* Default screen */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-700">📺 Default <span className="text-gray-400 font-normal">(shows all services)</span></span>
+                <div className="flex-1" />
+                <button type="button" onClick={() => copyText(baseDisplayUrl)} className="btn-secondary text-xs py-1 px-2">Copy</button>
+                <a href={baseDisplayUrl} target="_blank" rel="noreferrer" className="btn-primary text-xs py-1 px-2">Open ↗</a>
+              </div>
+              <code className="mt-2 block text-[10px] text-gray-400 break-all">{baseDisplayUrl}</code>
+            </div>
+
+            {/* Named screens */}
+            {screens.map((sc, idx) => (
+              <div key={sc.name} className="rounded-xl border border-indigo-100 bg-white p-3 mb-2 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-800 flex-1 truncate">📺 {sc.name}</span>
+                  <button type="button" onClick={() => setEditingIdx(editingIdx === idx ? null : idx)}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50">
+                    {editingIdx === idx ? 'Done' : 'Select Services'}
+                  </button>
+                  <button type="button" onClick={() => copyText(screenUrl(sc))} className="btn-secondary text-xs py-1 px-2">Copy</button>
+                  <a href={screenUrl(sc)} target="_blank" rel="noreferrer" className="btn-primary text-xs py-1 px-2">Open ↗</a>
+                  <button type="button" onClick={() => removeScreen(idx)} className="text-red-400 hover:text-red-600 text-xs p-1" title="Remove">✕</button>
+                </div>
+
+                {/* Service filter chips */}
+                {editingIdx === idx && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    {services.length === 0
+                      ? <p className="text-xs text-gray-400">No services found. Add services in the Services section first.</p>
+                      : <>
+                          <p className="text-[11px] text-gray-500 mb-2">Select which services appear on this TV. Leave all unchecked to show everything.</p>
+                          <div className="flex flex-wrap gap-2">
+                            {services.map(svc => {
+                              const active = sc.services.includes(svc);
+                              return (
+                                <button key={svc} type="button"
+                                  onClick={() => toggleService(idx, svc)}
+                                  className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                                    active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-indigo-400'
+                                  }`}>
+                                  {svc}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                    }
+                  </div>
+                )}
+
+                <div className="mt-2">
+                  {sc.services.length > 0
+                    ? <div className="flex flex-wrap gap-1 mb-1">
+                        {sc.services.map(s => <span key={s} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{s}</span>)}
+                      </div>
+                    : <p className="text-[10px] text-gray-400 mb-1">All services</p>
+                  }
+                  <code className="text-[10px] text-gray-400 break-all">{screenUrl(sc)}</code>
+                </div>
+              </div>
+            ))}
+
+            {/* Add new screen */}
+            <div className="flex gap-2 mt-3">
+              <input
+                className="input text-xs py-2 flex-1"
+                placeholder="Screen name, e.g. Floor 1, Reception…"
+                value={newScreen}
+                onChange={e => setNewScreen(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addScreen()}
+              />
+              <button type="button" onClick={addScreen} className="btn-secondary text-xs py-2 px-3 whitespace-nowrap">+ Add Screen</button>
+            </div>
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
             <strong>How to use:</strong>
             <ul className="mt-1.5 space-y-1 list-disc list-inside text-xs">
-              <li><strong>Download PNG</strong> — high-res image, ready to print or embed</li>
-              <li><strong>Print</strong> — opens a clean print layout directly</li>
-              <li><strong>Open Kiosk</strong> — display on a tablet at reception for self-service</li>
+              <li><strong>Kiosk URL</strong> — open on a tablet at reception for visitor self check-in</li>
+              <li><strong>TV Screens</strong> — create one per TV, select services, copy URL to that TV</li>
+              <li><strong>Download / Print</strong> — high-res QR code for printing and placing at reception</li>
             </ul>
           </div>
         </div>

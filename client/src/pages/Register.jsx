@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -11,7 +11,8 @@ const initial = {
 export default function Register() {
   const [form, setForm] = useState(initial);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [submitted, setSubmitted] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   function set(field) {
     return e => setForm(f => ({ ...f, [field]: e.target.value }));
@@ -25,13 +26,40 @@ export default function Register() {
     setLoading(true);
     try {
       await api.post('/auth/register', form);
-      toast.success('Registration submitted! Awaiting admin approval.');
-      navigate('/login');
+      setRegisteredEmail(form.admin_email);
+      setSubmitted(true);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-indigo-100 px-4">
+        <div className="w-full max-w-md">
+          <div className="card text-center py-10 px-8">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25H4.5a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5H4.5a2.25 2.25 0 00-2.25 2.25m19.5 0l-9.75 6.75L2.25 6.75" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h2>
+            <p className="text-gray-500 mb-2">
+              We sent a verification link to
+            </p>
+            <p className="text-indigo-600 font-semibold mb-6">{registeredEmail}</p>
+            <p className="text-gray-400 text-sm mb-8">
+              Click the link in the email to activate your account. The link expires in 24 hours.
+            </p>
+            <Link to="/login" className="text-primary-600 font-medium hover:underline text-sm">
+              Back to login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -89,7 +117,7 @@ export default function Register() {
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full py-2.5">
-              {loading ? 'Submitting…' : 'Submit Registration'}
+              {loading ? 'Creating account…' : 'Create Account'}
             </button>
           </form>
           <p className="text-center text-sm text-gray-500 mt-6">
