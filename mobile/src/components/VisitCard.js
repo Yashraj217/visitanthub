@@ -29,10 +29,14 @@ export default function VisitCard({ visit, onPress }) {
   const { user } = useAuth();
   const tz = user?.company_timezone || 'Asia/Kolkata';
   return (
-    <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity
+      style={[s.card, visit.ref_number?.startsWith('BK-') && s.cardScheduled]}
+      onPress={onPress} activeOpacity={0.75}>
       <View style={s.row}>
         <View style={s.info}>
-          <Text style={s.ref}>{visit.ref_number || `#${visit.id}`}</Text>
+          <Text style={[s.ref, visit.ref_number?.startsWith('BK-') && s.refScheduled]}>
+            {visit.ref_number || `#${visit.id}`}
+          </Text>
           <Text style={s.name}>{visit.visitor_name || 'Unknown Visitor'}</Text>
           {visit.service_name ? <Text style={s.service}>{visit.service_name}</Text> : null}
           {visit.employee_name ? (
@@ -61,12 +65,14 @@ export default function VisitCard({ visit, onPress }) {
 }
 
 const s = StyleSheet.create({
-  card:        { backgroundColor: COLORS.card, borderRadius: 12, padding: 14, marginBottom: 10,
-                 shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8,
-                 shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  card:          { backgroundColor: COLORS.card, borderRadius: 12, padding: 14, marginBottom: 10,
+                   shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8,
+                   shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  cardScheduled: { backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa' },
   row:         { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   info:        { flex: 1 },
-  ref:         { fontSize: 11, color: COLORS.textMuted, fontWeight: '600', marginBottom: 2, fontFamily: 'monospace' },
+  ref:          { fontSize: 11, color: COLORS.textMuted, fontWeight: '600', marginBottom: 2, fontFamily: 'monospace' },
+  refScheduled: { color: '#ea580c' },
   name:        { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 2 },
   service:     { fontSize: 13, color: COLORS.primary, fontWeight: '500', marginBottom: 3 },
   assigneeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, flexShrink: 1 },

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -57,6 +57,112 @@ function PieTooltip({ active, payload }) {
   );
 }
 
+/* ── Appointments side-drawer ──────────────────────────────────────────────── */
+function AppointmentsDrawer({ open, onClose, today, companyTz }) {
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading]           = useState(false);
+  const [acting, setActing]             = useState({});
+
+  const load = useCallback(() => {
+    if (!open) return;
+    setLoading(true);
+    api.get('/scheduling/bookings', { params: { status: 'pending' } })
+      .then(({ data }) => setAppointments(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function act(id, status) {
+    setActing(p => ({ ...p, [id]: status }));
+    try {
+      await api.put(`/scheduling/bookings/${id}`, { status });
+      setAppointments(prev => prev.filter(a => a.id !== id));
+    } catch {
+      // leave in list on failure
+    } finally {
+      setActing(p => { const n = { ...p }; delete n[id]; return n; });
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      {/* backdrop */}
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+
+      {/* drawer */}
+      <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+        {/* header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Pending Appointments</h2>
+            <p className="text-xs text-gray-500 mt-0.5">All appointments awaiting approval</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {loading && (
+            <p className="text-sm text-gray-400 text-center py-10">Loading…</p>
+          )}
+          {!loading && appointments.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-4xl mb-3">📅</p>
+              <p className="text-sm text-gray-500">No pending appointments for today</p>
+            </div>
+          )}
+          {appointments.map(a => (
+            <div key={a.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-semibold text-gray-900">{a.visitor_name}</p>
+                  <p className="text-xs text-gray-500">{a.visitor_mobile}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="block text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">
+                    {a.scheduled_time?.slice(0, 5)}
+                  </span>
+                  <span className="block text-sm font-semibold text-gray-700 mt-1">
+                    {new Date(a.scheduled_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 mb-1">
+                <span className="font-medium">Service:</span> {a.service_name}
+              </p>
+              {a.employee_name && (
+                <p className="text-xs text-gray-600 mb-3">
+                  <span className="font-medium">Associate:</span> {a.employee_name}
+                  {a.designation ? ` · ${a.designation}` : ''}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  disabled={!!acting[a.id]}
+                  onClick={() => act(a.id, 'confirmed')}
+                  className="flex-1 text-sm font-semibold py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors disabled:opacity-50">
+                  {acting[a.id] === 'confirmed' ? 'Approving…' : 'Approve'}
+                </button>
+                <button
+                  disabled={!!acting[a.id]}
+                  onClick={() => act(a.id, 'cancelled')}
+                  className="flex-1 text-sm font-semibold py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50">
+                  {acting[a.id] === 'cancelled' ? 'Rejecting…' : 'Reject'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Main dashboard ─────────────────────────────────────────────────────────── */
 export default function CompanyDashboard() {
   const { user } = useAuth();
   const companyTz = user?.company_timezone || 'UTC';
@@ -75,8 +181,9 @@ export default function CompanyDashboard() {
   const [period, setPeriod]         = useState('monthly');
   const [customFrom, setCustomFrom] = useState(defaultFrom);
   const [customTo, setCustomTo]     = useState(today);
+  const [pendingApptCount, setPendingApptCount] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Fetch stats + preset chart data once
   useEffect(() => {
     Promise.all([
       api.get('/companies/me/stats'),
@@ -87,7 +194,13 @@ export default function CompanyDashboard() {
     }).finally(() => setLoading(false));
   }, []);
 
-  // Fetch custom chart data when custom period + valid dates
+  // Fetch count of all pending appointments (any date) for the badge
+  useEffect(() => {
+    api.get('/scheduling/bookings', { params: { status: 'pending' } })
+      .then(({ data }) => setPendingApptCount(data.length))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (period !== 'custom' || !customFrom || !customTo || customFrom > customTo) return;
     setCustomLoading(true);
@@ -118,7 +231,7 @@ export default function CompanyDashboard() {
   return (
     <div className="p-4 sm:p-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">Welcome back, {user?.name}</p>
@@ -137,6 +250,27 @@ export default function CompanyDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Appointments tab — shown below title, above period filter */}
+      <button
+        onClick={() => setDrawerOpen(true)}
+        className={`inline-flex items-center gap-2 mb-6 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+          pendingApptCount > 0
+            ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+            : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+        }`}>
+        <span className="text-base">📅</span>
+        <span>Pending Appointments</span>
+        {pendingApptCount > 0 && (
+          <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+            {pendingApptCount} pending
+          </span>
+        )}
+        {pendingApptCount === 0 && (
+          <span className="text-gray-400 text-xs">none pending</span>
+        )}
+        <span className="text-gray-400 ml-1">→</span>
+      </button>
 
       {/* Global period filter */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-6">
@@ -171,7 +305,7 @@ export default function CompanyDashboard() {
         <div className="text-gray-400">Loading…</div>
       ) : (
         <>
-          {/* Stat cards — always current, not period-filtered */}
+          {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard label="Today's Visits"    value={stats?.today_visits}    color="bg-blue-500"   link="/dashboard/visits" />
             <StatCard label="Pending"           value={stats?.pending_visits}  color="bg-yellow-500" link="/dashboard/visits?status=pending" />
@@ -184,7 +318,6 @@ export default function CompanyDashboard() {
             <div className="text-gray-400 py-10 text-center">Loading chart data…</div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-              {/* Trend bar chart (2 cols) */}
               <div className="xl:col-span-2 card">
                 <div className="mb-4">
                   <h2 className="text-base font-semibold text-gray-900">Visits Trend</h2>
@@ -211,7 +344,6 @@ export default function CompanyDashboard() {
                 )}
               </div>
 
-              {/* Service pie chart */}
               <div className="card">
                 <h2 className="text-base font-semibold text-gray-900 mb-1">By Service</h2>
                 <p className="text-xs text-gray-400 mb-4">{periodLabel}</p>
@@ -283,6 +415,14 @@ export default function CompanyDashboard() {
           </div>
         </>
       )}
+
+      {/* Appointments side drawer */}
+      <AppointmentsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        today={today}
+        companyTz={companyTz}
+      />
     </div>
   );
 }

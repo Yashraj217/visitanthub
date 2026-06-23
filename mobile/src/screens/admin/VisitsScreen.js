@@ -103,6 +103,15 @@ export default function AdminVisitsScreen({ navigation }) {
     if (refreshKey > 0) loadPage(1, { ft: filterRef.current, sq: searchRef.current });
   }, [refreshKey]);
 
+  // Auto-refresh every 2 minutes so scheduled visits appear without manual pull-to-refresh
+  useEffect(() => {
+    const t = setInterval(
+      () => loadPage(1, { ft: filterRef.current, sq: searchRef.current }),
+      2 * 60 * 1000
+    );
+    return () => clearInterval(t);
+  }, []);
+
   function handleLoadMore() {
     if (hasMore && !loadingMore && !loading) {
       loadPage(page + 1, { ft: filterRef.current, sq: searchRef.current, append: true });

@@ -212,6 +212,12 @@ export default function Visits() {
 
   useEffect(() => { load(); }, [filters]);
 
+  // Auto-refresh every 2 minutes so scheduled visits appear without manual reload
+  useEffect(() => {
+    const t = setInterval(() => load(), 2 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [filters]);
+
   async function updateStatus(id, status) {
     try {
       await api.put(`/visits/${id}/status`, { status });
@@ -361,7 +367,8 @@ export default function Visits() {
           {/* Mobile card list */}
           <div className="sm:hidden divide-y divide-gray-100">
             {filtered.map(v => (
-              <div key={v.id} className="p-4 hover:bg-gray-50 cursor-pointer"
+              <div key={v.id}
+                className={`p-4 cursor-pointer ${v.ref_number?.startsWith('BK-') ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}`}
                 onClick={() => openDetail(v)}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -370,7 +377,7 @@ export default function Visits() {
                   </div>
                   <span className={`shrink-0 badge-${v.status}`}>{v.status}</span>
                 </div>
-                {v.ref_number && <p className="text-xs text-gray-400 font-mono mt-1">{v.ref_number}</p>}
+                {v.ref_number && <p className={`text-xs font-mono mt-1 font-semibold ${v.ref_number?.startsWith('BK-') ? 'text-orange-600' : 'text-primary-600'}`}>{v.ref_number}</p>}
                 <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
                   <p>{v.employee_name}{v.designation ? ` — ${v.designation}` : ''}</p>
                   <p>
@@ -422,9 +429,10 @@ export default function Visits() {
               </thead>
               <tbody>
                 {filtered.map(v => (
-                  <tr key={v.id} className="border-b last:border-0 hover:bg-gray-50 cursor-pointer"
+                  <tr key={v.id}
+                    className={`border-b last:border-0 cursor-pointer ${v.ref_number?.startsWith('BK-') ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'}`}
                     onClick={() => openDetail(v)}>
-                    {show('ref_number')    && <td className="px-5 py-3 font-mono text-xs text-primary-600 font-semibold whitespace-nowrap">{v.ref_number || '—'}</td>}
+                    {show('ref_number')    && <td className={`px-5 py-3 font-mono text-xs font-semibold whitespace-nowrap ${v.ref_number?.startsWith('BK-') ? 'text-orange-600' : 'text-primary-600'}`}>{v.ref_number || '—'}</td>}
                     {show('visitor_name') && <td className="px-5 py-3 font-medium">
                       <span>{v.visitor_name}</span>
                       {v.photo_count > 0 && (

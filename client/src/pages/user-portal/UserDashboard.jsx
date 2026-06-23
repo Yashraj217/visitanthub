@@ -82,6 +82,87 @@ function PieLegend({ data }) {
   );
 }
 
+/* ── Appointments drawer for associates (with approve/reject) ───────────────── */
+function TodayApptDrawer({ open, onClose, appointments, onAction }) {
+  const [acting, setActing] = useState({});
+
+  async function act(id, status) {
+    setActing(p => ({ ...p, [id]: status }));
+    try {
+      await api.put(`/scheduling/bookings/${id}`, { status });
+      onAction(id, status);
+    } catch {
+      // leave card on failure
+    } finally {
+      setActing(p => { const n = { ...p }; delete n[id]; return n; });
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed top-0 right-0 h-full w-full max-w-sm bg-white shadow-2xl z-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900">My Scheduled Appointments</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {appointments.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-4xl mb-3">📅</p>
+              <p className="text-sm text-gray-500">No pending appointments</p>
+            </div>
+          )}
+          {appointments.map(a => (
+            <div key={a.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="font-semibold text-gray-900">{a.visitor_name}</p>
+                <div className="text-right shrink-0">
+                  <span className="block text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">
+                    {a.scheduled_time?.slice(0, 5)}
+                  </span>
+                  <span className="block text-sm font-semibold text-gray-700 mt-1">
+                    {new Date(a.scheduled_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-1">{a.visitor_mobile}</p>
+              <p className="text-xs text-gray-600 mb-1">
+                <span className="font-medium">Service:</span> {a.service_name}
+              </p>
+              {a.purpose && (
+                <p className="text-xs text-gray-500 italic mb-2">{a.purpose}</p>
+              )}
+              {a.status === 'pending' ? (
+                <div className="flex gap-2 mt-3">
+                  <button
+                    disabled={!!acting[a.id]}
+                    onClick={() => act(a.id, 'confirmed')}
+                    className="flex-1 text-sm font-semibold py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors disabled:opacity-50">
+                    {acting[a.id] === 'confirmed' ? 'Approving…' : 'Approve'}
+                  </button>
+                  <button
+                    disabled={!!acting[a.id]}
+                    onClick={() => act(a.id, 'cancelled')}
+                    className="flex-1 text-sm font-semibold py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50">
+                    {acting[a.id] === 'cancelled' ? 'Rejecting…' : 'Reject'}
+                  </button>
+                </div>
+              ) : (
+                <span className="inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                  Confirmed
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Main dashboard ─────────────────────────────────────────────────────────── */
 export default function UserDashboard() {
   const { user } = useAuth();
   const companyTz = user?.company_timezone || 'UTC';
@@ -92,13 +173,15 @@ export default function UserDashboard() {
     return new Date(Date.UTC(y, m - 1, d - 6)).toLocaleDateString('en-CA', { timeZone: companyTz });
   }, [today, companyTz]);
 
-  const [presetData, setPresetData]     = useState(null);
-  const [customData, setCustomData]     = useState(null);
-  const [loading, setLoading]           = useState(true);
+  const [presetData, setPresetData]       = useState(null);
+  const [customData, setCustomData]       = useState(null);
+  const [loading, setLoading]             = useState(true);
   const [customLoading, setCustomLoading] = useState(false);
-  const [period, setPeriod]             = useState('monthly');
-  const [customFrom, setCustomFrom]     = useState(defaultFrom);
-  const [customTo, setCustomTo]         = useState(today);
+  const [period, setPeriod]               = useState('monthly');
+  const [customFrom, setCustomFrom]       = useState(defaultFrom);
+  const [customTo, setCustomTo]           = useState(today);
+  const [todayAppts, setTodayAppts]       = useState([]);
+  const [apptOpen, setApptOpen]           = useState(false);
 
   // Fetch all preset period data once
   useEffect(() => {
@@ -107,6 +190,16 @@ export default function UserDashboard() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Fetch all pending/confirmed appointments for this associate (any date)
+  useEffect(() => {
+    if (!user?.employee_id) return;
+    api.get('/scheduling/bookings', {
+      params: { employee_id: user.employee_id },
+    })
+      .then(({ data }) => setTodayAppts(data.filter(a => ['pending', 'confirmed'].includes(a.status))))
+      .catch(() => {});
+  }, [user?.employee_id]);
 
   // Fetch custom range data whenever period=custom and valid dates are set
   useEffect(() => {
@@ -130,7 +223,6 @@ export default function UserDashboard() {
 
   const isLoading = loading || (period === 'custom' && customLoading);
 
-  // Smart XAxis interval so labels don't overlap on large datasets
   const xAxisInterval = period === 'daily' ? 4
     : period === 'custom' ? Math.max(0, Math.floor(seriesData.length / 7) - 1)
     : 0;
@@ -139,9 +231,12 @@ export default function UserDashboard() {
     ? (customFrom && customTo ? `${customFrom} – ${customTo}` : 'Custom range')
     : PERIODS.find(p => p.key === period)?.label;
 
+  const pendingCount   = todayAppts.filter(a => a.status === 'pending').length;
+  const confirmedCount = todayAppts.filter(a => a.status === 'confirmed').length;
+
   return (
     <div className="p-4 sm:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>
           <p className="text-gray-500 mt-1">Overview of your visitor appointments</p>
@@ -176,6 +271,26 @@ export default function UserDashboard() {
           )}
         </div>
       </div>
+
+      {/* Today's appointments banner */}
+      {todayAppts.length > 0 && (
+        <button
+          onClick={() => setApptOpen(true)}
+          className="w-full text-left mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+          <span className="text-2xl">📅</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-indigo-900">
+              You have {todayAppts.length} scheduled appointment{todayAppts.length !== 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-indigo-600 mt-0.5">
+              {confirmedCount > 0 && `${confirmedCount} confirmed`}
+              {confirmedCount > 0 && pendingCount > 0 && ' · '}
+              {pendingCount > 0 && `${pendingCount} awaiting approval`}
+            </p>
+          </div>
+          <span className="text-indigo-400 text-sm shrink-0">View →</span>
+        </button>
+      )}
 
       {isLoading ? (
         <div className="text-gray-400 py-12 text-center">Loading…</div>
@@ -245,6 +360,19 @@ export default function UserDashboard() {
           </div>
         </>
       )}
+
+      <TodayApptDrawer
+        open={apptOpen}
+        onClose={() => setApptOpen(false)}
+        appointments={todayAppts}
+        onAction={(id, status) => {
+          if (status === 'cancelled') {
+            setTodayAppts(prev => prev.filter(a => a.id !== id));
+          } else {
+            setTodayAppts(prev => prev.map(a => a.id === id ? { ...a, status: 'confirmed' } : a));
+          }
+        }}
+      />
     </div>
   );
 }

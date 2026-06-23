@@ -13,6 +13,12 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import DataDeletion from './pages/DataDeletion';
 
+// Marketing pages
+import Features from './pages/Features';
+import Pricing  from './pages/Pricing';
+import About    from './pages/About';
+import Contact  from './pages/Contact';
+
 // Super admin pages
 import SuperDashboard from './pages/super-admin/Dashboard';
 import SuperCompanies from './pages/super-admin/Companies';
@@ -64,6 +70,12 @@ function AppRoutes() {
       <Route path="/privacy-policy"   element={<PrivacyPolicy />} />
       <Route path="/terms-of-service" element={<TermsOfService />} />
       <Route path="/data-deletion"    element={<DataDeletion />} />
+
+      {/* Marketing pages */}
+      <Route path="/features" element={<Features />} />
+      <Route path="/pricing"  element={<Pricing />} />
+      <Route path="/about"    element={<About />} />
+      <Route path="/contact"  element={<Contact />} />
 
       {/* Visitor kiosk — public */}
       <Route path="/visit/:slug"              element={<VisitorMobile />} />
