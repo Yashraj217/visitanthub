@@ -40,7 +40,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
   const [visits,        setVisits]        = useState([]);
   const [page,          setPage]          = useState(1);
   const [hasMore,       setHasMore]       = useState(false);
-  const [status,        setStatus]        = useState(route.params?.initialFilter || 'pending');
+  const [status,        setStatus]        = useState(route.params?.initialFilter || 'all');
   const [dateFilter,    setDateFilter]    = useState('all');
   const [customDate,    setCustomDate]    = useState(new Date());
   const [showPicker,    setShowPicker]    = useState(false);

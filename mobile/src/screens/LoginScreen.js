@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, Image, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -134,9 +134,11 @@ export default function LoginScreen({ navigation }) {
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
         <View style={s.logoBox}>
-          <View style={s.logoCircle}>
-            <Text style={s.logoText}>VH</Text>
-          </View>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={s.logoIcon}
+            resizeMode="contain"
+          />
           <Text style={s.appName}>VisitantHub</Text>
           <Text style={s.tagline}>Visitor Management</Text>
         </View>
@@ -221,9 +223,7 @@ const s = StyleSheet.create({
   root:          { flex: 1, backgroundColor: COLORS.background },
   scroll:        { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoBox:       { alignItems: 'center', marginBottom: 32 },
-  logoCircle:    { width: 72, height: 72, borderRadius: 20, backgroundColor: COLORS.primary,
-                   alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  logoText:      { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: 1 },
+  logoIcon:      { width: 84, height: 84, borderRadius: 20, marginBottom: 12 },
   appName:       { fontSize: 26, fontWeight: '700', color: COLORS.text },
   tagline:       { fontSize: 14, color: COLORS.textMuted, marginTop: 4 },
   card:          { backgroundColor: COLORS.card, borderRadius: 16, padding: 24,
