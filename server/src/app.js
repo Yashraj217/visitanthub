@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { testConnection } = require('./config/database');
+const { autoCheckInAll } = require('./services/autoCheckIn');
 
 const app = express();
 
@@ -55,4 +56,8 @@ testConnection().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  // Run auto check-in once at startup, then every 5 minutes
+  autoCheckInAll().catch(console.error);
+  setInterval(() => autoCheckInAll().catch(console.error), 5 * 60 * 1000);
 });

@@ -1,76 +1,7 @@
 const router = require('express').Router();
 const { pool } = require('../config/database');
 const { localDateToUtcRange } = require('../utils/tz');
-
-// ── Auto check-in: create walk-in visit for each due scheduled visit ──────────
-async function autoCheckIn(companyId, todayStr, nowTimeStr) {
-  const [due] = await pool.query(
-    `SELECT * FROM scheduled_visits
-     WHERE company_id = ?
-       AND status = 'confirmed'
-       AND scheduled_date = ?
-       AND scheduled_time <= ?
-       AND visit_id IS NULL`,
-    [companyId, todayStr, nowTimeStr]
-  );
-  if (!due.length) return;
-
-  for (const sv of due) {
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      // Resolve employee (handle "any available" bookings)
-      let empId = sv.employee_id;
-      if (!empId && sv.service_id) {
-        const [[first]] = await conn.query(
-          `SELECT es.employee_id FROM employee_services es
-           JOIN employees e ON e.id = es.employee_id
-           WHERE es.service_id = ? AND e.company_id = ? AND e.status = 'active'
-           LIMIT 1`,
-          [sv.service_id, companyId]
-        );
-        if (first) empId = first.employee_id;
-      }
-      if (!empId) { await conn.rollback(); conn.release(); continue; }
-
-      // Find or create visitor record
-      await conn.query(
-        `INSERT INTO visitors (company_id, name, mobile, email)
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name)`,
-        [companyId, sv.visitor_name, sv.visitor_mobile, sv.visitor_email || null]
-      );
-      const [[vis]] = await conn.query(
-        'SELECT id FROM visitors WHERE company_id = ? AND mobile = ?',
-        [companyId, sv.visitor_mobile]
-      );
-
-      // Create walk-in visit entry
-      const [ins] = await conn.query(
-        `INSERT INTO visits
-           (company_id, visitor_id, employee_id, service_id, service_name, ref_number, purpose, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-        [companyId, vis.id, empId,
-         sv.service_id || null, sv.service_name || null,
-         sv.booking_ref, sv.purpose || sv.service_name || null]
-      );
-
-      // Link back and mark scheduled visit as checked_in
-      await conn.query(
-        'UPDATE scheduled_visits SET visit_id = ?, status = ? WHERE id = ?',
-        [ins.insertId, 'checked_in', sv.id]
-      );
-
-      await conn.commit();
-    } catch (err) {
-      await conn.rollback();
-      console.error('[Auto check-in error]', sv.booking_ref, err.message);
-    } finally {
-      conn.release();
-    }
-  }
-}
+const { autoCheckInCompany } = require('../services/autoCheckIn');
 
 // Public — no auth required
 router.get('/:slug', async (req, res) => {
@@ -89,7 +20,7 @@ router.get('/:slug', async (req, res) => {
     const { start: todayStart, end: todayEnd } = localDateToUtcRange(todayStr, tz);
 
     // Auto check-in any scheduled visits whose time has arrived
-    await autoCheckIn(company.id, todayStr, nowTimeStr);
+    await autoCheckInCompany(company.id, tz);
 
     // Live walk-in queue (pending + approved today) — include approved_at for wait estimation
     const [visits] = await pool.query(
