@@ -1,6 +1,6 @@
 const https = require('https');
 const { pool } = require('../config/database');
-const { sendVisitNotification } = require('../services/whatsapp');
+const { sendVisitNotification, sendCheckInConfirmation } = require('../services/whatsapp');
 const { localDateToUtcRange } = require('../utils/tz');
 const { cacheGet, cacheSet } = require('../config/redis');
 
@@ -383,6 +383,15 @@ async function registerVisit(req, res) {
       whatsapp_sent:    result.sent,
       queue_ahead:      Number(queue_ahead),
     });
+
+    // Send check-in confirmation to visitor (fire-and-forget)
+    sendCheckInConfirmation({
+      company,
+      visitor,
+      visit: { ...visit, ref_number: refNumber, service_name: resolvedServiceName },
+      employee,
+      queueAhead: Number(queue_ahead),
+    }).catch(err => console.error('[WhatsApp check-in confirmation error]', err.message));
   } catch (err) {
     await conn.rollback();
     console.error(err);

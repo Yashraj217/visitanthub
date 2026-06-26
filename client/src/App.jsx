@@ -36,6 +36,9 @@ import Scheduling from './pages/company/Scheduling';
 import MyVisits from './pages/user-portal/MyVisits';
 import UserDashboard from './pages/user-portal/UserDashboard';
 
+// Shared
+import HelpPage from './pages/HelpPage';
+
 // Visitor pages (public, no auth)
 import VisitorMobile from './pages/visitor/MobileEntry';
 import VisitorForm from './pages/visitor/VisitorForm';
@@ -108,6 +111,7 @@ function AppRoutes() {
         <Route path="services"    element={<CompanyServices />} />
         <Route path="scheduling"  element={<Scheduling />} />
         <Route path="settings"    element={<CompanySettings />} />
+        <Route path="help"        element={<HelpPage />} />
       </Route>
 
       {/* Company User Portal */}
@@ -116,6 +120,7 @@ function AppRoutes() {
       }>
         <Route index element={<UserDashboard />} />
         <Route path="visits" element={<MyVisits />} />
+        <Route path="help"   element={<HelpPage />} />
       </Route>
 
       {/* Root: landing page for guests, dashboard redirect for logged-in users */}

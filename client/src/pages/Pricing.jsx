@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
+import Seo from '../components/Seo';
 
 /* ── Data ─────────────────────────────────────────────────────────────────── */
 
@@ -132,6 +133,11 @@ function FaqItem({ q, a }) {
 export default function Pricing() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      <Seo
+        title="Pricing"
+        path="/pricing"
+        description="Simple, transparent pricing for VisitantHub visitor management. Choose a plan that fits your clinic or office size. No hidden fees. Start free and scale as you grow."
+      />
       <MarketingNav />
 
       {/* ── Hero ── */}

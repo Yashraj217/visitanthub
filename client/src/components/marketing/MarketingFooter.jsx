@@ -52,14 +52,14 @@ export default function MarketingFooter() {
               </a>
             </li>
             <li>
-              <a href="tel:+919814006629" className="hover:text-white transition-colors flex items-start gap-2">
+              <a href="tel:+918195011181" className="hover:text-white transition-colors flex items-start gap-2">
                 <span className="shrink-0 mt-0.5">📞</span>
-                <span>+91 98140 06629</span>
+                <span>+91 81950 11181</span>
               </a>
             </li>
             <li>
               <a
-                href="https://wa.me/919814006629"
+                href="https://wa.me/918195011181"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-white transition-colors flex items-start gap-2"

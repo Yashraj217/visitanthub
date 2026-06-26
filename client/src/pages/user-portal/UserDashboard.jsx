@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import WelcomeModal from '../../components/WelcomeModal';
 import { todayInTz } from '../../utils/tz';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -236,6 +237,8 @@ export default function UserDashboard() {
 
   return (
     <div className="p-4 sm:p-8">
+      <WelcomeModal role="associate" userId={user?.id} companyName={user?.company_name} />
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>

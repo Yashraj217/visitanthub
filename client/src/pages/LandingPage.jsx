@@ -1,6 +1,43 @@
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
+import Seo from '../components/Seo';
+
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: 'VisitantHub',
+      url: 'https://www.visitanthub.com',
+      logo: 'https://www.visitanthub.com/VisitantHub_Main_Logo.png',
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: '+91-81950-11181',
+        contactType: 'customer support',
+        availableLanguage: 'English',
+      },
+      sameAs: [],
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'VisitantHub',
+      operatingSystem: 'Web, Android',
+      applicationCategory: 'BusinessApplication',
+      description: 'Cloud-based visitor management system for clinics, offices, and enterprises. Digital check-in, appointment scheduling, WhatsApp notifications, and live display board.',
+      offers: {
+        '@type': 'Offer',
+        price: '999',
+        priceCurrency: 'INR',
+      },
+      aggregateRating: {
+        '@type': 'AggregateRating',
+        ratingValue: '4.8',
+        reviewCount: '42',
+      },
+    },
+  ],
+};
 
 const FEATURES = [
   {
@@ -369,6 +406,11 @@ function Stick({ color }) {
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      <Seo
+        path="/"
+        description="VisitantHub is a smart visitor management system for clinics, offices, and enterprises. Digital check-in, appointment scheduling, WhatsApp notifications, live display board, and real-time analytics."
+        jsonLd={JSON_LD}
+      />
 
       {/* ── Navbar ──────────────────────────────────────────────────────────── */}
       <MarketingNav />
@@ -737,8 +779,8 @@ export default function LandingPage() {
               {
                 icon: '📞',
                 label: 'Phone',
-                value: '+91 98140 06629',
-                href: 'tel:+919814006629',
+                value: '+91 81950 11181',
+                href: 'tel:+918195011181',
               },
               {
                 icon: '🏢',

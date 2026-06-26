@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
+import Seo from '../components/Seo';
 
 /* ── Data ─────────────────────────────────────────────────────────────────── */
 
@@ -34,6 +35,11 @@ const STATS = [
 export default function About() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      <Seo
+        title="About Us"
+        path="/about"
+        description="Learn about VisitantHub and Sonnet Infotech — the team building smarter visitor management for clinics, enterprises, and offices across India."
+      />
       <MarketingNav />
 
       {/* ── Hero ── */}

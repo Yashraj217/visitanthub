@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 
 const UPDATED = 'June 18, 2026';
 
@@ -14,6 +15,7 @@ function Section({ title, children }) {
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      <Seo title="Terms of Service" path="/terms-of-service" description="Read VisitantHub's Terms of Service governing the use of our visitor management platform." noIndex />
       {/* Top bar */}
       <header className="border-b">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">

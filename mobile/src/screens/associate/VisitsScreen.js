@@ -15,10 +15,10 @@ import api                 from '../../services/api';
 
 const PAGE_SIZE = 20;
 
-function byTimeAsc(a, b) {
+function byTime(a, b, asc) {
   const ta = a.visit_time ? String(a.visit_time) : '';
   const tb = b.visit_time ? String(b.visit_time) : '';
-  return ta > tb ? 1 : ta < tb ? -1 : 0;
+  return asc ? (ta > tb ? 1 : ta < tb ? -1 : 0) : (ta > tb ? -1 : ta < tb ? 1 : 0);
 }
 
 const STATUS_FILTERS = ['all', 'pending', 'approved', 'completed'];
@@ -45,6 +45,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
   const [customDate,    setCustomDate]    = useState(new Date());
   const [showPicker,    setShowPicker]    = useState(false);
   const [search,        setSearch]        = useState('');
+  const [sortOrder,     setSortOrder]     = useState('desc');
   const [loading,       setLoading]       = useState(true);
   const [loadingMore,   setLoadingMore]   = useState(false);
   const [refreshing,    setRefreshing]    = useState(false);
@@ -55,10 +56,12 @@ export default function AssocVisitsScreen({ navigation, route }) {
   const dateFilterRef = useRef(dateFilter);
   const customDateRef = useRef(customDate);
   const searchRef     = useRef(search);
+  const sortRef       = useRef(sortOrder);
   statusRef.current     = status;
   dateFilterRef.current = dateFilter;
   customDateRef.current = customDate;
   searchRef.current     = search;
+  sortRef.current       = sortOrder;
 
   function buildDateParams(df, cd) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
@@ -77,7 +80,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
     return {};
   }
 
-  async function loadPage(pg, { st, df, sq, append = false } = {}) {
+  async function loadPage(pg, { st, df, sq, ord, append = false } = {}) {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -92,16 +95,18 @@ export default function AssocVisitsScreen({ navigation, route }) {
       if (st !== 'all') params.status = st;
       if (sq?.trim())   params.search = sq.trim();
       Object.assign(params, buildDateParams(df, customDateRef.current));
+      params.order = ord ?? sortRef.current;
 
       const { data } = await api.get('/visits', { params, signal: ctrl.signal });
       if (myId !== loadIdRef.current) return; // superseded by a newer request
 
       const incoming = data.visits || [];
+      const effectiveOrd = ord ?? sortRef.current;
       setHasMore(data.hasMore ?? false);
       setPage(pg);
       setVisits(prev => {
         const merged = append && pg > 1 ? [...prev, ...incoming] : incoming;
-        return [...merged].sort(byTimeAsc);
+        return [...merged].sort((a, b) => byTime(a, b, effectiveOrd === 'asc'));
       });
     } catch (err) {
       if (err?.code === 'ERR_CANCELED') return;
@@ -114,9 +119,12 @@ export default function AssocVisitsScreen({ navigation, route }) {
     }
   }
 
-  // Status / date filter / custom date changes → reload from page 1 immediately
+  // Status / date filter / custom date changes → reset sort to smart default, reload
   useEffect(() => {
-    loadPage(1, { st: status, df: dateFilter, sq: searchRef.current });
+    const defaultOrd = status === 'pending' ? 'asc' : 'desc';
+    setSortOrder(defaultOrd);
+    sortRef.current = defaultOrd;
+    loadPage(1, { st: status, df: dateFilter, sq: searchRef.current, ord: defaultOrd });
   }, [status, dateFilter, customDate]);
 
   // Search changes → debounced reload from page 1
@@ -177,6 +185,18 @@ export default function AssocVisitsScreen({ navigation, route }) {
       <View style={s.topBar}>
         <Text style={s.title}>My Visits</Text>
         <Text style={s.countBadge}>{visits.length}{hasMore ? '+' : ''}</Text>
+        <TouchableOpacity
+          style={s.sortBtn}
+          onPress={() => {
+            const next = sortOrder === 'asc' ? 'desc' : 'asc';
+            setSortOrder(next);
+            sortRef.current = next;
+            loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current, ord: next });
+          }}>
+          <Text style={s.sortBtnText}>
+            {sortOrder === 'asc' ? '↑ Oldest' : '↓ Newest'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Search bar */}
@@ -316,6 +336,10 @@ const s = StyleSheet.create({
   countBadge:     { fontSize: 13, fontWeight: '700', color: COLORS.primary,
                     backgroundColor: '#eff0ff', paddingHorizontal: 10, paddingVertical: 3,
                     borderRadius: 12 },
+  sortBtn:        { backgroundColor: '#f1f2f8', borderRadius: 8,
+                    paddingHorizontal: 10, paddingVertical: 5,
+                    borderWidth: 1.5, borderColor: '#c7c8e0' },
+  sortBtnText:    { fontSize: 12, fontWeight: '600', color: '#374151' },
   searchRow:      { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card,
                     paddingHorizontal: 12, paddingVertical: 8,
                     borderBottomWidth: 1, borderBottomColor: COLORS.border },

@@ -13,10 +13,10 @@ import api                 from '../../services/api';
 
 const PAGE_SIZE = 20;
 
-function byTimeAsc(a, b) {
+function byTime(a, b, asc) {
   const ta = a.visit_time ? String(a.visit_time) : '';
   const tb = b.visit_time ? String(b.visit_time) : '';
-  return ta > tb ? 1 : ta < tb ? -1 : 0;
+  return asc ? (ta > tb ? 1 : ta < tb ? -1 : 0) : (ta > tb ? -1 : ta < tb ? 1 : 0);
 }
 
 const FILTERS       = ['all', 'pending', 'approved', 'completed', 'rejected'];
@@ -33,18 +33,21 @@ export default function AdminVisitsScreen({ navigation }) {
   const [hasMore,     setHasMore]     = useState(false);
   const [filter,      setFilter]      = useState('all');
   const [search,      setSearch]      = useState('');
+  const [sortOrder,   setSortOrder]   = useState('desc');
   const [loading,     setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);
 
-  const abortRef  = useRef(null);
-  const loadIdRef = useRef(0);
-  const filterRef = useRef(filter);
-  const searchRef = useRef(search);
+  const abortRef    = useRef(null);
+  const loadIdRef   = useRef(0);
+  const filterRef   = useRef(filter);
+  const searchRef   = useRef(search);
+  const sortRef     = useRef(sortOrder);
   filterRef.current = filter;
   searchRef.current = search;
+  sortRef.current   = sortOrder;
 
-  async function loadPage(pg, { ft, sq, append = false } = {}) {
+  async function loadPage(pg, { ft, sq, ord, append = false } = {}) {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -58,16 +61,18 @@ export default function AdminVisitsScreen({ navigation }) {
       const params = { page: pg, limit: PAGE_SIZE };
       if (ft !== 'all') params.status = ft;
       if (sq?.trim())   params.search = sq.trim();
+      params.order = ord ?? sortRef.current;
 
       const { data } = await api.get('/visits', { params, signal: ctrl.signal });
       if (myId !== loadIdRef.current) return; // superseded by a newer request
 
       const incoming = data.visits || [];
+      const effectiveOrd = ord ?? sortRef.current;
       setHasMore(data.hasMore ?? false);
       setPage(pg);
       setVisits(prev => {
         const merged = append && pg > 1 ? [...prev, ...incoming] : incoming;
-        return [...merged].sort(byTimeAsc);
+        return [...merged].sort((a, b) => byTime(a, b, effectiveOrd === 'asc'));
       });
     } catch (err) {
       if (err?.code === 'ERR_CANCELED') return;
@@ -80,9 +85,12 @@ export default function AdminVisitsScreen({ navigation }) {
     }
   }
 
-  // Filter changes → reload from page 1 immediately
+  // Filter changes → reset sort to smart default, then reload
   useEffect(() => {
-    loadPage(1, { ft: filter, sq: searchRef.current });
+    const defaultOrd = filter === 'pending' ? 'asc' : 'desc';
+    setSortOrder(defaultOrd);
+    sortRef.current = defaultOrd;
+    loadPage(1, { ft: filter, sq: searchRef.current, ord: defaultOrd });
   }, [filter]);
 
   // Search changes → debounced reload from page 1
@@ -137,6 +145,18 @@ export default function AdminVisitsScreen({ navigation }) {
         <View style={s.titleRow}>
           <Text style={s.title}>Visits</Text>
           <Text style={s.countBadge}>{visits.length}{hasMore ? '+' : ''}</Text>
+          <TouchableOpacity
+            style={s.sortBtn}
+            onPress={() => {
+              const next = sortOrder === 'asc' ? 'desc' : 'asc';
+              setSortOrder(next);
+              sortRef.current = next;
+              loadPage(1, { ft: filterRef.current, sq: searchRef.current, ord: next });
+            }}>
+            <Text style={s.sortBtnText}>
+              {sortOrder === 'asc' ? '↑ Oldest' : '↓ Newest'}
+            </Text>
+          </TouchableOpacity>
         </View>
         <View style={s.searchBox}>
           <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
@@ -206,6 +226,10 @@ const s = StyleSheet.create({
   countBadge:     { fontSize: 13, fontWeight: '700', color: COLORS.primary,
                     backgroundColor: '#eff0ff', paddingHorizontal: 10, paddingVertical: 3,
                     borderRadius: 12 },
+  sortBtn:        { marginLeft: 'auto', backgroundColor: '#f1f2f8', borderRadius: 8,
+                    paddingHorizontal: 10, paddingVertical: 5,
+                    borderWidth: 1.5, borderColor: '#c7c8e0' },
+  sortBtnText:    { fontSize: 12, fontWeight: '600', color: '#374151' },
   searchBox:      { flexDirection: 'row', alignItems: 'center', gap: 8,
                     backgroundColor: COLORS.background, borderRadius: 10,
                     paddingHorizontal: 12, paddingVertical: 8,

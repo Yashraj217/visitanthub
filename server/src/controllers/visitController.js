@@ -3,7 +3,7 @@ const { localDateToUtcRange } = require('../utils/tz');
 const { sendApprovalNotification } = require('../services/whatsapp');
 
 async function list(req, res) {
-  const { status, date, date_from, date_to, employee_id, service_id, search } = req.query;
+  const { status, date, date_from, date_to, employee_id, service_id, search, order } = req.query;
   const cid = req.user.role === 'super_admin' ? req.query.company_id : req.user.company_id;
 
   // Resolve company timezone for date filtering
@@ -70,10 +70,13 @@ async function list(req, res) {
   const pg   = req.query.page ? Math.max(1, parseInt(req.query.page) || 1) : null;
   const pgSz = Math.min(50, parseInt(req.query.limit) || 20);
 
+  // User-supplied order overrides default; pending defaults to ASC (queue), everything else DESC
+  const defaultOrder = status === 'pending' ? 'ASC' : 'DESC';
+  const sortDir = order === 'asc' ? 'ASC' : order === 'desc' ? 'DESC' : defaultOrder;
   if (pg !== null) {
-    sql += ` ORDER BY v.visit_time ASC LIMIT ${pgSz + 1} OFFSET ${(pg - 1) * pgSz}`;
+    sql += ` ORDER BY v.visit_time ${sortDir} LIMIT ${pgSz + 1} OFFSET ${(pg - 1) * pgSz}`;
   } else {
-    sql += ' ORDER BY v.visit_time ASC LIMIT 200';
+    sql += ` ORDER BY v.visit_time ${sortDir} LIMIT 200`;
   }
 
   try {

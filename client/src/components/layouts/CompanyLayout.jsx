@@ -13,6 +13,7 @@ const navItems = [
   { to: '/dashboard/services',       label: 'Services',    icon: '🎯' },
   { to: '/dashboard/scheduling',     label: 'Scheduling',  icon: '📅' },
   { to: '/dashboard/settings',       label: 'Settings',    icon: '⚙️' },
+  { to: '/dashboard/help',           label: 'Help',        icon: '❓' },
 ];
 
 export default function CompanyLayout() {
@@ -26,11 +27,8 @@ export default function CompanyLayout() {
     navigate('/login');
   }
 
-  async function openHelp() {
-    try {
-      const { data } = await api.get('/auth/sso-link');
-      window.open(data.url, '_blank', 'noopener,noreferrer');
-    } catch { /* silent */ }
+  function openHelp() {
+    navigate('/dashboard/help');
   }
 
   return (

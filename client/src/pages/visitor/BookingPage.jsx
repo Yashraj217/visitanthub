@@ -282,6 +282,7 @@ export default function BookingPage() {
   const [submitting, setSubmitting]   = useState(false);
   const [bookingRef, setBookingRef]   = useState(null);
   const [bookingDetails, setBookingDetails] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
 
   const accentColor = info?.company?.sidebar_color || '#4f46e5';
 
@@ -308,6 +309,7 @@ export default function BookingPage() {
 
   async function handleSubmit() {
     if (!form.name.trim() || !form.mobile.trim()) return;
+    setSubmitError(null);
 
     // Validate required custom fields
     const visitorFields = selectedService?.fields?.filter(f => !f.is_hidden) || [];
@@ -350,7 +352,12 @@ export default function BookingPage() {
       });
       setBookingRef(data.booking_ref);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to submit booking. Please try again.');
+      const errData = err.response?.data;
+      setSubmitError({
+        duplicate: errData?.duplicate === true,
+        ref: errData?.booking_ref || null,
+        message: errData?.message || 'Failed to submit booking. Please try again.',
+      });
     } finally { setSubmitting(false); }
   }
 
@@ -617,6 +624,22 @@ export default function BookingPage() {
               <input type="text" name="website" value={form._hp} onChange={e => setForm(f => ({ ...f, _hp: e.target.value }))}
                 tabIndex={-1} autoComplete="off"
                 style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }} />
+
+              {submitError && (
+                <div className={`mt-5 rounded-2xl p-4 text-sm ${submitError.duplicate ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                  {submitError.duplicate ? (
+                    <>
+                      <p className="font-bold mb-1">Booking already exists!</p>
+                      <p>{submitError.message}</p>
+                      {submitError.ref && (
+                        <p className="mt-2 font-mono font-semibold">{submitError.ref}</p>
+                      )}
+                    </>
+                  ) : (
+                    <p>{submitError.message}</p>
+                  )}
+                </div>
+              )}
 
               <button onClick={handleSubmit}
                 disabled={submitting || !form.name.trim() || !form.mobile.trim()}

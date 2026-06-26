@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
+import Seo from '../components/Seo';
 
 /* ── Data ─────────────────────────────────────────────────────────────────── */
 
@@ -136,6 +137,11 @@ function Check({ value }) {
 export default function Features() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      <Seo
+        title="Features"
+        path="/features"
+        description="Explore VisitantHub's features: digital visitor check-in, QR code kiosk, appointment scheduling, live display board, WhatsApp notifications, associate portal, and real-time analytics."
+      />
       <MarketingNav />
 
       {/* ── Hero ── */}

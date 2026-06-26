@@ -1,5 +1,5 @@
 const { pool } = require('../config/database');
-const { sendApprovalNotification } = require('../services/whatsapp');
+const { sendApprovalNotification, sendBookingConfirmation } = require('../services/whatsapp');
 const { cacheGet, cacheSet } = require('../config/redis');
 
 // Generate a unique booking reference
@@ -168,6 +168,19 @@ async function createBooking(req, res) {
     );
     if (!company) return res.status(404).json({ message: 'Company not found' });
 
+    // Check for duplicate booking by same mobile on the same date
+    const [[duplicate]] = await pool.query(
+      `SELECT booking_ref FROM scheduled_visits
+       WHERE company_id = ? AND visitor_mobile = ? AND scheduled_date = ?
+         AND status IN ('pending','confirmed')`,
+      [company.id, visitor_mobile.trim(), scheduled_date]
+    );
+    if (duplicate) return res.status(409).json({
+      message: `You already have a booking for this date (Ref: ${duplicate.booking_ref}). Please check your existing appointment or choose a different date.`,
+      booking_ref: duplicate.booking_ref,
+      duplicate: true,
+    });
+
     // Verify slot is still available
     const [[conflict]] = await pool.query(
       `SELECT id FROM scheduled_visits
@@ -204,6 +217,33 @@ async function createBooking(req, res) {
       booking_ref,
       message: 'Booking request submitted. You will be notified once confirmed.',
     });
+
+    // Send WhatsApp confirmation to visitor (fire-and-forget, after response)
+    try {
+      const [[co]] = await pool.query(
+        'SELECT name, whatsapp_provider, whatsapp_api_key, whatsapp_from FROM companies WHERE id = ?',
+        [company.id]
+      );
+      let employeeName = null;
+      if (employee_id) {
+        const [[emp]] = await pool.query('SELECT name FROM employees WHERE id = ?', [employee_id]);
+        if (emp) employeeName = emp.name;
+      }
+      await sendBookingConfirmation({
+        company: co,
+        booking: {
+          visitor_name:   visitor_name.trim(),
+          visitor_mobile: visitor_mobile.trim(),
+          booking_ref,
+          scheduled_date,
+          scheduled_time,
+          employee_name:  employeeName,
+          service_name:   service_name || null,
+        },
+      });
+    } catch (waErr) {
+      console.error('[WhatsApp booking confirmation error]', waErr.message);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

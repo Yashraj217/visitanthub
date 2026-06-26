@@ -73,10 +73,10 @@ export default function MyVisits() {
   const doPollRef   = useRef(null);
 
   const today = todayInTz(companyTz);
-  const [filterFrom, setFilterFrom]       = useState(today);
-  const [filterTo,   setFilterTo]         = useState(today);
+  const [filterDate, setFilterDate]       = useState(today);
   const [filterStatus, setFilterStatus]   = useState('pending');
   const [filterService, setFilterService] = useState('');
+  const [sortOrder, setSortOrder]         = useState('asc'); // pending defaults to asc
 
   // Load assigned services + hidden-field metadata once on mount
   useEffect(() => {
@@ -107,19 +107,19 @@ export default function MyVisits() {
     }
   }, [allHiddenFields]);
 
-  function buildParams() {
+  function buildParams(order) {
     const params = {};
-    if (filterFrom)    params.date_from  = filterFrom;
-    if (filterTo)      params.date_to    = filterTo;
+    if (filterDate)    params.date       = filterDate;
     if (filterStatus)  params.status     = filterStatus;
     if (filterService) params.service_id = filterService;
+    params.order = order ?? sortOrder;
     return params;
   }
 
-  async function load() {
+  async function load(order) {
     setLoading(true);
     try {
-      const { data } = await api.get('/visits', { params: buildParams() });
+      const { data } = await api.get('/visits', { params: buildParams(order) });
       setVisits(data);
       knownIdsRef.current = new Set(data.map(v => v.id));
     } catch {
@@ -146,7 +146,11 @@ export default function MyVisits() {
   }
   doPollRef.current = silentLoad;
 
-  useEffect(() => { load(); }, [filterFrom, filterTo, filterStatus, filterService]);
+  useEffect(() => {
+    const defaultOrder = filterStatus === 'pending' ? 'asc' : 'desc';
+    setSortOrder(defaultOrder);
+    load(defaultOrder);
+  }, [filterDate, filterStatus, filterService]);
 
   // Single long-lived interval; always calls latest silentLoad via ref
   useEffect(() => {
@@ -355,7 +359,7 @@ export default function MyVisits() {
       header: c.field_label,
       value: r => (r.hidden_fields || []).find(f => f.field_id === c.id)?.value ?? '',
     }));
-    exportToExcel(`my-visits-${filterFrom}-${filterTo}`, 'My Visits', cols, filtered);
+    exportToExcel(`my-visits-${filterDate}`, 'My Visits', cols, filtered);
   }
 
   return (
@@ -369,9 +373,21 @@ export default function MyVisits() {
               Live
             </span>
           </div>
-          <p className="text-gray-500 text-sm mt-1">
-            {filtered.length}{search.trim() ? ` of ${visits.length}` : ''} visits · refreshes every {POLL_INTERVAL / 1000}s
-          </p>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <p className="text-gray-500 text-sm">
+              {filtered.length}{search.trim() ? ` of ${visits.length}` : ''} visits · refreshes every {POLL_INTERVAL / 1000}s
+            </p>
+            <button
+              onClick={() => {
+                const next = sortOrder === 'asc' ? 'desc' : 'asc';
+                setSortOrder(next);
+                load(next);
+              }}
+              className="flex items-center gap-1.5 text-sm font-semibold px-4 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors whitespace-nowrap shadow-sm"
+            >
+              {sortOrder === 'asc' ? '↑ Oldest First' : '↓ Newest First'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -384,13 +400,8 @@ export default function MyVisits() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <div className="flex items-center gap-1">
-          <input type="date" className="input w-36" value={filterFrom}
-            onChange={e => setFilterFrom(e.target.value)} />
-          <span className="text-gray-400 text-sm">to</span>
-          <input type="date" className="input w-36" value={filterTo}
-            onChange={e => setFilterTo(e.target.value)} />
-        </div>
+        <input type="date" className="input w-36" value={filterDate}
+          onChange={e => setFilterDate(e.target.value)} />
         <select className="input w-full sm:w-36" value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All Status</option>

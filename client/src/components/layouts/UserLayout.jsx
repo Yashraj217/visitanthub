@@ -8,6 +8,7 @@ import api from '../../services/api';
 const navItems = [
   { to: '/user-portal',        label: 'Dashboard', icon: '📊', exact: true },
   { to: '/user-portal/visits', label: 'My Visits', icon: '📋', exact: true },
+  { to: '/user-portal/help',   label: 'Help',      icon: '❓', exact: true },
 ];
 
 export default function UserLayout() {
@@ -21,11 +22,8 @@ export default function UserLayout() {
     navigate('/login');
   }
 
-  async function openHelp() {
-    try {
-      const { data } = await api.get('/auth/sso-link');
-      window.open(data.url, '_blank', 'noopener,noreferrer');
-    } catch { /* silent */ }
+  function openHelp() {
+    navigate('/user-portal/help');
   }
 
   return (

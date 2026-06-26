@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /user-portal/
+Disallow: /super-admin/
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /data-deletion
+
+Sitemap: https://www.visitanthub.com/sitemap.xml

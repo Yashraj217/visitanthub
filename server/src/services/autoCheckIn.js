@@ -2,27 +2,40 @@ const { pool } = require('../config/database');
 
 async function autoCheckInCompany(companyId, timezone) {
   const tz = timezone || 'UTC';
-  const todayStr    = new Date().toLocaleDateString('en-CA', { timeZone: tz });
-  const nowTimeStr  = new Date().toLocaleTimeString('en-CA', {
+  const todayStr   = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const nowTimeStr = new Date().toLocaleTimeString('en-CA', {
     timeZone: tz, hour12: false,
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 
-  const [due] = await pool.query(
-    `SELECT * FROM scheduled_visits
-     WHERE company_id = ?
-       AND status = 'confirmed'
-       AND scheduled_date = ?
-       AND scheduled_time <= ?
+  // Quick non-locking pre-check — bail early if nothing is due
+  const [candidates] = await pool.query(
+    `SELECT id FROM scheduled_visits
+     WHERE company_id = ? AND status = 'confirmed'
+       AND scheduled_date = ? AND scheduled_time <= ?
        AND visit_id IS NULL`,
     [companyId, todayStr, nowTimeStr]
   );
-  if (!due.length) return;
+  if (!candidates.length) return;
 
-  for (const sv of due) {
+  for (const { id } of candidates) {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+
+      // Re-fetch with row lock — prevents concurrent auto-checkins from creating duplicates
+      const [[sv]] = await conn.query(
+        `SELECT * FROM scheduled_visits
+         WHERE id = ? AND status = 'confirmed' AND visit_id IS NULL
+         FOR UPDATE`,
+        [id]
+      );
+      if (!sv) {
+        // Another concurrent call already processed this row
+        await conn.commit();
+        conn.release();
+        continue;
+      }
 
       let empId = sv.employee_id;
       if (!empId && sv.service_id) {
@@ -35,7 +48,11 @@ async function autoCheckInCompany(companyId, timezone) {
         );
         if (first) empId = first.employee_id;
       }
-      if (!empId) { await conn.rollback(); conn.release(); continue; }
+      if (!empId) {
+        await conn.rollback();
+        conn.release();
+        continue;
+      }
 
       await conn.query(
         `INSERT INTO visitors (company_id, name, mobile, email)
@@ -66,7 +83,7 @@ async function autoCheckInCompany(companyId, timezone) {
       console.log(`[AutoCheckIn] Created visit ${sv.booking_ref} for company ${companyId}`);
     } catch (err) {
       await conn.rollback();
-      console.error('[AutoCheckIn error]', sv.booking_ref, err.message);
+      console.error('[AutoCheckIn error]', err.message);
     } finally {
       conn.release();
     }

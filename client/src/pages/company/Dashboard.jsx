@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import WelcomeModal from '../../components/WelcomeModal';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatInTz, todayInTz } from '../../utils/tz';
 import {
@@ -230,6 +231,8 @@ export default function CompanyDashboard() {
 
   return (
     <div className="p-4 sm:p-8">
+      <WelcomeModal role="company_admin" userId={user?.id} companyName={user?.company_name} />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
         <div>

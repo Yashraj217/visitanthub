@@ -14,6 +14,14 @@
  * Template: visit_approved_notification  (Category: Utility)
  *   Body: Hello {{1}}, Your visit has been approved!\n\nYou may now proceed to meet {{2}} ({{3}}).\nLocation: {{4}}\nService: {{5}}\nRef: {{6}}\n\n— {{7}}
  *   Variables: 1=visitor name, 2=associate name, 3=designation, 4=location, 5=service, 6=ref, 7=company name
+ *
+ * Template: booking_confirmation  (Category: Utility)
+ *   Body: Hello {{1}}, your appointment has been booked!\n\nRef: {{2}}\nDate: {{3}}\nTime: {{4}}\nAssociate: {{5}}\nService: {{6}}\n\nYour booking is pending approval. You will be notified once confirmed.\n\n— {{7}}
+ *   Variables: 1=visitor name, 2=booking_ref, 3=date, 4=time, 5=associate, 6=service, 7=company name
+ *
+ * Template: visitor_checkin_confirmation  (Category: Utility)
+ *   Body: Hello {{1}}, you have successfully checked in at {{2}}!\n\nRef: {{3}}\nAssociate: {{4}}\nService: {{5}}\nVisitors ahead: {{6}}\n\nYou will be notified once your visit is approved.\n\n— {{2}}
+ *   Variables: 1=visitor name, 2=company name, 3=ref_number, 4=associate name, 5=service, 6=queue ahead
  */
 
 // ── Twilio send (plain text — Twilio sandbox supports free-form) ────────────
@@ -152,4 +160,94 @@ async function sendApprovalNotification({ company, employee, visitor, visit }) {
   return { sent: false, reason: 'unsupported_provider' };
 }
 
-module.exports = { sendVisitNotification, sendApprovalNotification };
+// ── Notification: appointment booked → confirm to visitor ───────────────────
+
+async function sendBookingConfirmation({ company, booking }) {
+  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+    return { sent: false, reason: 'no_provider' };
+  }
+
+  const dateStr    = new Date(booking.scheduled_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr    = booking.scheduled_time?.slice(0, 5) || '—';
+  const associate  = booking.employee_name || 'To be assigned';
+  const service    = booking.service_name  || '—';
+
+  if (company.whatsapp_provider === 'twilio') {
+    const message =
+      `Hello ${booking.visitor_name},\n\n` +
+      `✅ Your appointment has been booked!\n\n` +
+      `📋 Ref: *${booking.booking_ref}*\n` +
+      `📅 Date: ${dateStr}\n` +
+      `⏰ Time: ${timeStr}\n` +
+      `👨‍⚕️ Associate: ${associate}\n` +
+      `🏥 Service: ${service}\n\n` +
+      `Your booking is *pending approval*. You will be notified once confirmed.\n\n` +
+      `— ${company.name}`;
+    return sendViaTwilio({ company, phone: booking.visitor_mobile, message });
+  }
+
+  if (company.whatsapp_provider === 'meta') {
+    return sendViaMetaTemplate({
+      company,
+      phone:        booking.visitor_mobile,
+      templateName: 'booking_confirmation',
+      parameters:   [
+        booking.visitor_name,
+        booking.booking_ref,
+        dateStr,
+        timeStr,
+        associate,
+        service,
+        company.name,
+      ],
+    });
+  }
+
+  return { sent: false, reason: 'unsupported_provider' };
+}
+
+// ── Notification: visitor checked in → confirm to visitor ───────────────────
+
+async function sendCheckInConfirmation({ company, visitor, visit, employee, queueAhead }) {
+  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+    return { sent: false, reason: 'no_provider' };
+  }
+
+  const ref       = visit.ref_number || String(visit.id);
+  const assoc     = employee?.name ? `${employee.name}${employee.designation ? ` (${employee.designation})` : ''}` : 'To be assigned';
+  const service   = visit.service_name || visit.purpose || '—';
+  const ahead     = Number(queueAhead) || 0;
+
+  if (company.whatsapp_provider === 'twilio') {
+    const message =
+      `Hello ${visitor.name},\n\n` +
+      `✅ You have successfully checked in at *${company.name}*!\n\n` +
+      `📋 Ref: *${ref}*\n` +
+      `👨‍⚕️ Associate: ${assoc}\n` +
+      `🏥 Service: ${service}\n` +
+      `👥 Visitors ahead: ${ahead}\n\n` +
+      `You will be notified once your visit is approved.\n\n` +
+      `— ${company.name}`;
+    return sendViaTwilio({ company, phone: visitor.mobile, message });
+  }
+
+  if (company.whatsapp_provider === 'meta') {
+    return sendViaMetaTemplate({
+      company,
+      phone:        visitor.mobile,
+      templateName: 'visitor_checkin_confirmation',
+      parameters:   [
+        visitor.name,
+        company.name,
+        ref,
+        assoc,
+        service,
+        String(ahead),
+      ],
+    });
+  }
+
+  return { sent: false, reason: 'unsupported_provider' };
+}
+
+module.exports = { sendVisitNotification, sendApprovalNotification, sendBookingConfirmation, sendCheckInConfirmation };

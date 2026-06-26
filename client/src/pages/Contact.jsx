@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
+import Seo from '../components/Seo';
 
 /* ── Data ─────────────────────────────────────────────────────────────────── */
 
@@ -16,16 +17,16 @@ const CONTACT_CARDS = [
   {
     icon: '📞',
     label: 'Call us',
-    value: '+91 98140 06629',
+    value: '+91 81950 11181',
     sub: 'Mon – Sat, 9 am – 6 pm IST',
-    href: 'tel:+919814006629',
+    href: 'tel:+9181950 11181',
   },
   {
     icon: '💬',
     label: 'WhatsApp',
     value: 'Chat with us',
     sub: 'Quickest way to get a response.',
-    href: 'https://wa.me/919814006629',
+    href: 'https://wa.me/918195011181',
     external: true,
   },
 ];
@@ -92,6 +93,11 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      <Seo
+        title="Contact Us"
+        path="/contact"
+        description="Get in touch with the VisitantHub team. Call, email, or WhatsApp us. We reply within one business day. Book a free live demo to see our visitor management system in action."
+      />
       <MarketingNav />
 
       {/* ── Hero ── */}
@@ -157,7 +163,7 @@ export default function Contact() {
                   full setup — kiosk, display board, analytics, and all — in 20 minutes.
                 </p>
                 <a
-                  href="https://wa.me/919814006629?text=Hi%2C%20I%27d%20like%20to%20book%20a%20demo%20of%20VisitantHub"
+                  href="https://wa.me/918195011181?text=Hi%2C%20I%27d%20like%20to%20book%20a%20demo%20of%20VisitantHub"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block bg-white text-indigo-700 font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-indigo-50 transition-colors"

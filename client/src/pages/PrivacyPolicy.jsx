@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 
 const UPDATED = 'June 18, 2026';
 
@@ -14,6 +15,7 @@ function Section({ title, children }) {
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      <Seo title="Privacy Policy" path="/privacy-policy" description="Read VisitantHub's Privacy Policy to understand how we collect, use, and protect your personal data." noIndex />
       {/* Top bar */}
       <header className="border-b">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">

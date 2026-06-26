@@ -39,6 +39,7 @@ export default function Visits() {
   const [loading, setLoading] = useState(true);
   const [historyVisitorId, setHistoryVisitorId] = useState(null);
   const [filters, setFilters] = useState({ status: 'pending', date: '' });
+  const [sortOrder, setSortOrder] = useState('asc'); // pending defaults to asc (queue)
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editEmp, setEditEmp] = useState(false);
@@ -200,23 +201,28 @@ export default function Visits() {
     }
   }
 
-  async function load() {
+  async function load(order) {
     setLoading(true);
     const params = new URLSearchParams();
     if (filters.status) params.set('status', filters.status);
     if (filters.date)   params.set('date', filters.date);
+    params.set('order', order ?? sortOrder);
     const { data } = await api.get(`/visits?${params}`);
     setVisits(data);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [filters]);
+  useEffect(() => {
+    const defaultOrder = filters.status === 'pending' ? 'asc' : 'desc';
+    setSortOrder(defaultOrder);
+    load(defaultOrder);
+  }, [filters]);
 
   // Auto-refresh every 2 minutes so scheduled visits appear without manual reload
   useEffect(() => {
-    const t = setInterval(() => load(), 2 * 60 * 1000);
+    const t = setInterval(() => load(sortOrder), 2 * 60 * 1000);
     return () => clearInterval(t);
-  }, [filters]);
+  }, [filters, sortOrder]);
 
   async function updateStatus(id, status) {
     try {
@@ -255,9 +261,21 @@ export default function Visits() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {filtered.length}{search.trim() ? ` of ${visits.length}` : ''} records
-          </p>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <p className="text-sm text-gray-500">
+              {filtered.length}{search.trim() ? ` of ${visits.length}` : ''} records
+            </p>
+            <button
+              onClick={() => {
+                const next = sortOrder === 'asc' ? 'desc' : 'asc';
+                setSortOrder(next);
+                load(next);
+              }}
+              className="flex items-center gap-1.5 text-sm font-semibold px-4 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors whitespace-nowrap shadow-sm"
+            >
+              {sortOrder === 'asc' ? '↑ Oldest First' : '↓ Newest First'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -282,16 +300,13 @@ export default function Visits() {
           value={filters.date}
           onChange={e => setFilters(f => ({ ...f, date: e.target.value }))}
         />
-        {(filters.status || filters.date) && (
-          <button onClick={() => setFilters({ status:'', date:'' })} className="btn-secondary text-sm">Clear</button>
-        )}
 
         <button onClick={exportGrid} className="btn-secondary flex items-center gap-2">
           ⬇ Export
         </button>
 
         {/* Column picker */}
-        <div className="relative ml-auto" ref={colPickerRef}>
+        <div className="relative" ref={colPickerRef}>
           <button
             onClick={() => setColPickerOpen(o => !o)}
             className={`btn-secondary flex items-center gap-2 ${colPickerOpen ? 'ring-2 ring-primary-400' : ''}`}
@@ -357,6 +372,10 @@ export default function Visits() {
             </div>
           )}
         </div>
+
+        {(filters.status || filters.date) && (
+          <button onClick={() => setFilters({ status:'', date:'' })} className="btn-secondary ml-auto">Clear</button>
+        )}
       </div>
 
       <div className="card p-0 overflow-hidden">
