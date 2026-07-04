@@ -2,6 +2,50 @@ const { pool } = require('../config/database');
 const { localDateToUtcRange } = require('../utils/tz');
 const { sendApprovalNotification } = require('../services/whatsapp');
 
+/**
+ * After any status change, re-evaluate which pending visitor for an employee
+ * should be flagged is_ready=1 (the next-in-line when no one is being served).
+ */
+async function promoteNextReady(employeeId, companyId, tz) {
+  try {
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz || 'UTC' });
+    const { start, end } = localDateToUtcRange(todayStr, tz || 'UTC');
+
+    // Clear all existing ready flags for this employee today
+    await pool.query(
+      `UPDATE visits SET is_ready = 0, ready_at = NULL
+       WHERE employee_id = ? AND company_id = ? AND status = 'pending'
+         AND visit_time >= ? AND visit_time <= ?`,
+      [employeeId, companyId, start, end]
+    );
+
+    // Only promote if nobody is currently being served (approved)
+    const [[inProgress]] = await pool.query(
+      `SELECT id FROM visits
+       WHERE employee_id = ? AND company_id = ? AND status = 'approved' LIMIT 1`,
+      [employeeId, companyId]
+    );
+    if (inProgress) return; // someone is already in-service — don't flag next
+
+    // Flag the earliest pending visitor today
+    const [[next]] = await pool.query(
+      `SELECT id FROM visits
+       WHERE employee_id = ? AND company_id = ? AND status = 'pending'
+         AND visit_time >= ? AND visit_time <= ?
+       ORDER BY visit_time ASC LIMIT 1`,
+      [employeeId, companyId, start, end]
+    );
+    if (next) {
+      await pool.query(
+        `UPDATE visits SET is_ready = 1, ready_at = NOW() WHERE id = ?`,
+        [next.id]
+      );
+    }
+  } catch (err) {
+    console.error('[promoteNextReady]', err.message);
+  }
+}
+
 async function list(req, res) {
   const { status, date, date_from, date_to, employee_id, service_id, search, order } = req.query;
   const cid = req.user.role === 'super_admin' ? req.query.company_id : req.user.company_id;
@@ -24,6 +68,9 @@ async function list(req, res) {
   let sql = `SELECT v.id, v.ref_number, v.visit_time, v.status, v.whatsapp_sent,
                     v.service_id, v.service_name, v.purpose, v.notes,
                     v.employee_id, v.visitor_id,
+                    v.current_stage_id, v.current_stage_name, v.current_stage_color,
+                    v.is_ready, v.ready_at, v.approved_at,
+                    v.stage_status, v.stage_waiting_since,
                     vis.name AS visitor_name, vis.mobile, vis.email AS visitor_email,
                     emp.name AS employee_name, emp.designation,
                     (SELECT COUNT(*) FROM visit_photos p WHERE p.visit_id = v.id) AS photo_count
@@ -34,7 +81,16 @@ async function list(req, res) {
              WHERE 1=1`;
   const params = [];
   if (cid)        { sql += ' AND v.company_id = ?';       params.push(cid); }
-  if (status)     { sql += ' AND v.status = ?';           params.push(status); }
+  if (status) {
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      sql += ' AND v.status = ?';
+      params.push(statuses[0]);
+    } else if (statuses.length > 1) {
+      sql += ` AND v.status IN (${statuses.map(() => '?').join(',')})`;
+      params.push(...statuses);
+    }
+  }
   if (service_id) { sql += ' AND v.service_id = ?';       params.push(service_id); }
   // Convert local dates → UTC ranges using company timezone (DST-safe, no MySQL tz tables needed)
   if (date_from || date_to || date) {
@@ -131,6 +187,15 @@ async function getOne(req, res) {
       ...f,
       field_options: f.field_options ? JSON.parse(f.field_options) : [],
     }));
+
+    // Attach stage history
+    const [stageLogs] = await pool.query(
+      `SELECT stage_name, color, entered_at, entered_by_name
+       FROM visit_stage_logs WHERE visit_id = ? ORDER BY entered_at ASC`,
+      [visit.id]
+    );
+    visit.stage_logs = stageLogs;
+
     res.json(visit);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -138,23 +203,68 @@ async function getOne(req, res) {
 }
 
 async function updateStatus(req, res) {
-  const { status, notes } = req.body;
+  const { status, notes, force } = req.body;
   if (!['approved', 'rejected', 'completed', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'Invalid status' });
   }
   try {
-    let updateSql = status === 'approved'
-      ? 'UPDATE visits SET status = ?, notes = ?, approved_at = NOW() WHERE id = ? AND company_id = ?'
-      : 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
-    const updateParams = [status, notes || null, req.params.id, req.user.company_id];
-    if (req.user.role === 'company_user') {
-      updateSql += ' AND employee_id = ?';
-      updateParams.push(req.user.employee_id);
+    // Fetch visit to get employee/company and queue position
+    const [[visit]] = await pool.query(
+      `SELECT v.id, v.employee_id, v.company_id, v.visit_time, v.status AS current_status,
+              c.timezone
+       FROM visits v JOIN companies c ON c.id = v.company_id
+       WHERE v.id = ? AND v.company_id = ?`,
+      [req.params.id, req.user.company_id]
+    );
+    if (!visit) return res.status(404).json({ message: 'Visit not found' });
+    if (req.user.role === 'company_user' && visit.employee_id !== req.user.employee_id) {
+      return res.status(403).json({ message: 'Access denied' });
     }
-    const [result] = await pool.query(updateSql, updateParams);
+
+    // ── Queue-jump guard (approval only) ─────────────────────────────────
+    if (status === 'approved' && !force) {
+      const tz = visit.timezone || 'UTC';
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+      const { start, end } = localDateToUtcRange(todayStr, tz);
+
+      const [[ahead]] = await pool.query(
+        `SELECT v.id, vis.name AS visitor_name
+         FROM visits v JOIN visitors vis ON vis.id = v.visitor_id
+         WHERE v.employee_id = ? AND v.company_id = ? AND v.status = 'pending'
+           AND v.id != ? AND v.visit_time < ?
+           AND v.visit_time >= ? AND v.visit_time <= ?
+         ORDER BY v.visit_time ASC LIMIT 1`,
+        [visit.employee_id, visit.company_id, visit.id, visit.visit_time, start, end]
+      );
+      if (ahead) {
+        return res.json({
+          queue_warning: true,
+          ahead_visitor: ahead.visitor_name,
+          message: `${ahead.visitor_name} is ahead in queue. Serve them out of order?`,
+        });
+      }
+    }
+
+    // ── Apply status update ───────────────────────────────────────────────
+    let updateSql = status === 'approved'
+      ? 'UPDATE visits SET status = ?, notes = ?, is_ready = 0, approved_at = NOW() WHERE id = ? AND company_id = ?'
+      : 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
+    const [result] = await pool.query(updateSql,
+      [status, notes || null, req.params.id, req.user.company_id]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Visit not found' });
 
-    // Fire approval WhatsApp to visitor (non-blocking)
+    const tz = visit.timezone || 'UTC';
+
+    // ── Promote next-ready after service ends ─────────────────────────────
+    if (status === 'completed' || status === 'rejected') {
+      promoteNextReady(visit.employee_id, visit.company_id, tz);
+    }
+    // ── Promote on approval too (clears ready flag, re-evaluates in case of re-queue) ─
+    if (status === 'approved') {
+      promoteNextReady(visit.employee_id, visit.company_id, tz);
+    }
+
+    // ── Fire approval WhatsApp (non-blocking) ────────────────────────────
     if (status === 'approved') {
       pool.query(
         `SELECT v.id, v.ref_number, v.visit_time, v.service_name, v.purpose,
@@ -183,6 +293,7 @@ async function updateStatus(req, res) {
 
     res.json({ message: 'Status updated' });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -451,4 +562,4 @@ async function myCharts(req, res) {
   }
 }
 
-module.exports = { list, getOne, updateStatus, updateFieldValues, listEligibleEmployees, updateEmployee, myCharts };
+module.exports = { list, getOne, updateStatus, updateFieldValues, listEligibleEmployees, updateEmployee, myCharts, promoteNextReady };

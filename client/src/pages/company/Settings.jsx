@@ -54,6 +54,7 @@ export default function Settings() {
         {[
           { key: 'profile',      label: 'Profile' },
           { key: 'designations', label: 'Designations' },
+          { key: 'stages',       label: '🏷️ Stages' },
           { key: 'reference',    label: '🔢 Reference No.' },
           { key: 'whatsapp',     label: 'WhatsApp' },
           { key: 'kiosk',        label: 'Kiosk' },
@@ -186,6 +187,16 @@ export default function Settings() {
         <form onSubmit={saveWhatsApp} className="card space-y-4">
           <h2 className="text-base font-semibold mb-2">WhatsApp Notifications</h2>
           <p className="text-sm text-gray-500">When a visitor checks in, a WhatsApp message will be sent to the selected associate.</p>
+
+          {/* Disclaimer notice */}
+          <div className="flex gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <span className="text-amber-500 text-lg shrink-0">⚠️</span>
+            <div className="text-sm text-amber-800 space-y-1">
+              <p className="font-semibold">WhatsApp is not included in your plan and is not free.</p>
+              <p>WhatsApp Business API setup, phone number registration, message template approvals, and per-message charges are the sole responsibility of the client. VisitantHub provides the integration only.</p>
+              <p>Please refer to our <a href="/terms-of-service#whatsapp" target="_blank" className="underline font-medium">Terms of Service</a> for full details.</p>
+            </div>
+          </div>
           <div>
             <label className="label">Provider</label>
             <select className="input" value={profile.whatsapp_provider||'none'} onChange={set('whatsapp_provider')}>
@@ -224,6 +235,8 @@ export default function Settings() {
       {tab === 'kiosk' && (
         <KioskTab profile={profile} kioskUrl={kioskUrl} />
       )}
+
+      {tab === 'stages' && <StagesTab />}
     </div>
   );
 }
@@ -809,6 +822,211 @@ function LogoUploader({ currentUrl, label, uploadUrl, onUploaded }) {
         </div>
         <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
       </div>
+    </div>
+  );
+}
+
+/* ── Stages Tab ─────────────────────────────────────────────────────────────── */
+const STAGE_COLORS = [
+  '#6366f1','#8b5cf6','#ec4899','#f97316','#f59e0b',
+  '#10b981','#06b6d4','#3b82f6','#64748b','#ef4444',
+];
+
+function StagesTab() {
+  const [stages,    setStages]    = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [saving,    setSaving]    = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/stages').then(({ data }) => Array.isArray(data) ? data : []).catch(() => []),
+      api.get('/visits/employees').then(({ data }) => Array.isArray(data) ? data : []).catch(() => []),
+    ]).then(([s, e]) => { setStages(s); setEmployees(e); }).finally(() => setLoading(false));
+  }, []);
+
+  function addStage() {
+    setStages(prev => [...prev, {
+      _key: Date.now(),
+      name: '',
+      color: STAGE_COLORS[prev.length % STAGE_COLORS.length],
+      is_final: false,
+    }]);
+  }
+
+  function update(idx, field, value) {
+    setStages(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  }
+
+  function remove(idx) {
+    setStages(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function moveUp(idx) {
+    if (idx === 0) return;
+    setStages(prev => {
+      const arr = [...prev];
+      [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+      return arr;
+    });
+  }
+
+  function moveDown(idx) {
+    setStages(prev => {
+      if (idx >= prev.length - 1) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+      return arr;
+    });
+  }
+
+  async function save() {
+    if (stages.some(s => !s.name.trim())) {
+      toast.error('All stages must have a name'); return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await api.put('/stages', { stages });
+      setStages(data);
+      toast.success('Stages saved');
+    } catch { toast.error('Failed to save'); }
+    finally { setSaving(false); }
+  }
+
+  if (loading) return <div className="py-8 text-center text-gray-400">Loading…</div>;
+
+  return (
+    <div className="card space-y-5">
+      <div>
+        <h2 className="text-base font-semibold">Visit Stages</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Define the stages a visitor goes through. Associates and admins can advance visitors
+          through these stages in real time. The final stage automatically marks the visit as completed.
+        </p>
+      </div>
+
+      {stages.length === 0 && (
+        <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+          No stages configured. Add your first stage below.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {stages.map((s, idx) => (
+          <div key={s.id || s._key} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+            {/* Color picker */}
+            <div className="relative shrink-0">
+              <div className="w-7 h-7 rounded-full border-2 border-white shadow cursor-pointer"
+                style={{ backgroundColor: s.color }}
+                title="Click to change color" />
+              <select
+                className="absolute inset-0 opacity-0 cursor-pointer w-7 h-7"
+                value={s.color}
+                onChange={e => update(idx, 'color', e.target.value)}>
+                {STAGE_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {/* Stage name */}
+            <input
+              className="input flex-1 py-1.5 text-sm"
+              placeholder="Stage name (e.g. Reception, Security, Service)"
+              value={s.name}
+              onChange={e => update(idx, 'name', e.target.value)}
+            />
+
+            {/* Associate assignment */}
+            <select
+              className="input py-1.5 text-sm w-44 shrink-0"
+              value={s.employee_id || ''}
+              onChange={e => update(idx, 'employee_id', e.target.value ? Number(e.target.value) : null)}
+              title="Assign associate to this stage">
+              <option value="">Any associate</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+
+            {/* Final toggle */}
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 shrink-0 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!s.is_final}
+                onChange={e => {
+                  const checked = e.target.checked;
+                  setStages(prev => prev.map((st, i) =>
+                    i === idx ? { ...st, is_final: checked } : { ...st, is_final: false }
+                  ));
+                }}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Final
+            </label>
+
+            {/* Default toggle */}
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 shrink-0 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!s.is_default}
+                onChange={e => {
+                  const checked = e.target.checked;
+                  setStages(prev => prev.map((st, i) =>
+                    i === idx ? { ...st, is_default: checked } : { ...st, is_default: false }
+                  ));
+                }}
+                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              Default
+            </label>
+
+            {/* Reorder + remove */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => moveUp(idx)}   disabled={idx === 0}
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-20">▲</button>
+              <button onClick={() => moveDown(idx)} disabled={idx === stages.length - 1}
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-20">▼</button>
+              <button onClick={() => remove(idx)}
+                className="p-1 text-red-400 hover:text-red-600 ml-1">✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={addStage}
+          className="btn-secondary text-sm flex items-center gap-1.5">
+          + Add Stage
+        </button>
+        <button onClick={save} disabled={saving}
+          className="btn-primary text-sm px-5 disabled:opacity-60">
+          {saving ? 'Saving…' : 'Save Stages'}
+        </button>
+      </div>
+
+      {stages.length > 0 && (
+        <div className="pt-2 border-t border-gray-100">
+          <p className="text-xs text-gray-400 mb-2">Preview:</p>
+          <div className="flex items-center gap-1 flex-wrap">
+            {stages.map((s, i) => {
+              const emp = employees.find(e => e.id === (s.employee_id || null));
+              return (
+                <span key={i} className="flex items-center gap-1.5">
+                  <span className="flex flex-col items-center">
+                    <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full text-white"
+                      style={{ backgroundColor: s.color }}>
+                      {s.name || `Stage ${i + 1}`}
+                      {s.is_final && ' ✓'}
+                    </span>
+                    {s.is_default && <span className="text-[10px] text-green-500 font-semibold mt-0.5">★ Default</span>}
+                    {emp && <span className="text-[10px] text-gray-400 mt-0.5">{emp.name}</span>}
+                  </span>
+                  {i < stages.length - 1 && <span className="text-gray-300 text-xs self-start mt-2">→</span>}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

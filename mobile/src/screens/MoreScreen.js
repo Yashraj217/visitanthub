@@ -9,6 +9,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore         from 'expo-secure-store';
 import { useAuth }              from '../context/AuthContext';
 import { COLORS }               from '../constants/colors';
+import { FONTS }                from '../constants/fonts';
 import api                      from '../services/api';
 
 const BIO_ENABLED_KEY  = 'biometric_enabled';
@@ -253,13 +254,13 @@ const s = StyleSheet.create({
                  shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   avatar:      { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.primary,
                  alignItems: 'center', justifyContent: 'center' },
-  avatarText:  { color: '#fff', fontSize: 22, fontWeight: '800' },
-  userName:    { fontSize: 17, fontWeight: '700', color: COLORS.text },
-  userEmail:   { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
+  avatarText:  { color: '#fff', fontSize: 22, fontFamily: FONTS.bold },
+  userName:    { fontSize: 17, fontFamily: FONTS.bold, color: COLORS.text },
+  userEmail:   { fontSize: 13, fontFamily: FONTS.regular, color: COLORS.textMuted, marginTop: 2 },
   roleBadge:   { marginTop: 6, backgroundColor: '#eff0ff', paddingHorizontal: 10,
                  paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
-  roleText:    { fontSize: 11, fontWeight: '600', color: COLORS.primary },
-  sectionTitle:{ fontSize: 12, fontWeight: '700', color: COLORS.textMuted, letterSpacing: 0.8,
+  roleText:    { fontSize: 11, fontFamily: FONTS.semiBold, color: COLORS.primary },
+  sectionTitle:{ fontSize: 11, fontFamily: FONTS.semiBold, color: COLORS.textMuted, letterSpacing: 1,
                  textTransform: 'uppercase', marginBottom: 8, marginLeft: 4 },
   section:     { backgroundColor: COLORS.card, borderRadius: 14, overflow: 'hidden',
                  marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.04,
@@ -267,21 +268,21 @@ const s = StyleSheet.create({
   menuItem:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
                  borderBottomWidth: 1, borderBottomColor: COLORS.border },
   menuIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  menuLabel:   { flex: 1, fontSize: 15, fontWeight: '500', color: COLORS.text },
+  menuLabel:   { flex: 1, fontSize: 15, fontFamily: FONTS.semiBold, color: COLORS.text },
   modal:       { flex: 1, backgroundColor: COLORS.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                  padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border,
                  backgroundColor: COLORS.card },
-  modalTitle:  { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  modalTitle:  { fontSize: 17, fontFamily: FONTS.bold, color: COLORS.text },
   modalBody:   { padding: 20 },
-  label:       { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 6 },
+  label:       { fontSize: 13, fontFamily: FONTS.semiBold, color: COLORS.text, marginBottom: 6 },
   input:       { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
-                 paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
+                 paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: FONTS.regular,
                  color: COLORS.text, backgroundColor: '#fafafa', marginBottom: 16 },
   btn:         { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 14,
                  alignItems: 'center', marginTop: 8 },
-  btnText:     { color: '#fff', fontSize: 16, fontWeight: '700' },
+  btnText:     { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
   bioInfo:     { alignItems: 'center', marginBottom: 28, paddingTop: 12 },
-  bioInfoTitle:{ fontSize: 18, fontWeight: '700', color: COLORS.text, marginTop: 14, marginBottom: 8 },
-  bioInfoSub:  { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
+  bioInfoTitle:{ fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 14, marginBottom: 8 },
+  bioInfoSub:  { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textMuted, textAlign: 'center', lineHeight: 22 },
 });

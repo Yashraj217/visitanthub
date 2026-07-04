@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { exportToExcel } from '../../utils/exportExcel';
+import { exportToExcel, exportToCSV } from '../../utils/exportExcel';
 import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 
 export default function Visitors() {
@@ -33,15 +33,18 @@ export default function Visitors() {
             placeholder="Search by name or mobile…"
             value={search} onChange={e => setSearch(e.target.value)}
           />
-          <button onClick={() => exportToExcel('visitors', 'Visitors', [
+          <button onClick={() => exportToCSV('visitors', [
             { header: 'Name',         key: 'name' },
             { header: 'Mobile',       key: 'mobile' },
             { header: 'Email',        key: 'email' },
             { header: 'Address',      key: 'address' },
             { header: 'Total Visits', key: 'total_visits' },
-            { header: 'First Seen',   value: v => v.created_at ? new Date(v.created_at).toLocaleDateString() : '' },
-          ], filtered)} className="btn-secondary whitespace-nowrap flex items-center gap-1">
-            ⬇ Export
+            { header: 'First Seen',   value: v => v.created_at ? new Date(v.created_at).toLocaleDateString('en-IN') : '' },
+          ], filtered)} className="btn-secondary whitespace-nowrap flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export CSV
           </button>
         </div>
       </div>

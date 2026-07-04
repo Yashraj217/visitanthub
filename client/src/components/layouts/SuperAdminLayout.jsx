@@ -16,7 +16,7 @@ export default function SuperAdminLayout() {
 
   function handleLogout() {
     logout();
-    navigate('/login');
+    navigate('/');
   }
 
   return (

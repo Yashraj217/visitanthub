@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -35,6 +35,7 @@ import Scheduling from './pages/company/Scheduling';
 // Company user portal
 import MyVisits from './pages/user-portal/MyVisits';
 import UserDashboard from './pages/user-portal/UserDashboard';
+import MySchedule from './pages/user-portal/MySchedule';
 
 // Shared
 import HelpPage from './pages/HelpPage';
@@ -53,8 +54,9 @@ import UserLayout from './components/layouts/UserLayout';
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full" /></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/login" replace />;
   return children;
 }
@@ -119,17 +121,13 @@ function AppRoutes() {
         <PrivateRoute roles={['company_user']}><UserLayout /></PrivateRoute>
       }>
         <Route index element={<UserDashboard />} />
-        <Route path="visits" element={<MyVisits />} />
-        <Route path="help"   element={<HelpPage />} />
+        <Route path="visits"    element={<MyVisits />} />
+        <Route path="schedule"  element={<MySchedule />} />
+        <Route path="help"      element={<HelpPage />} />
       </Route>
 
-      {/* Root: landing page for guests, dashboard redirect for logged-in users */}
-      <Route path="/" element={
-        user?.role === 'super_admin'   ? <Navigate to="/super-admin" replace /> :
-        user?.role === 'company_admin' ? <Navigate to="/dashboard" replace /> :
-        user?.role === 'company_user'  ? <Navigate to="/user-portal" replace /> :
-        <LandingPage />
-      } />
+      {/* Root: always show landing page */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

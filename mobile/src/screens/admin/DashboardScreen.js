@@ -9,6 +9,7 @@ import { Ionicons }       from '@expo/vector-icons';
 import { useAuth }        from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { COLORS }         from '../../constants/colors';
+import { FONTS }          from '../../constants/fonts';
 import StatCard           from '../../components/StatCard';
 import VisitCard          from '../../components/VisitCard';
 import api                from '../../services/api';
@@ -215,12 +216,12 @@ export default function AdminDashboardScreen({ navigation }) {
         {/* Visit stats */}
         <Text style={s.sectionTitle}>Today's Summary</Text>
         <View style={s.statsRow}>
-          <StatCard label="Total Today" value={stats?.today_total}       color={COLORS.primary} icon="📋" />
-          <StatCard label="Pending"     value={stats?.today_pending}     color={COLORS.warning} icon="⏳" />
+          <StatCard label="Total Today" value={stats?.today_total}       color={COLORS.primary} icon="📊" />
+          <StatCard label="Pending"     value={stats?.today_pending}     color={COLORS.warning} icon="🔔" />
         </View>
         <View style={[s.statsRow, { marginTop: 10 }]}>
-          <StatCard label="In Progress" value={stats?.today_in_progress} color={COLORS.info}    icon="🔄" />
-          <StatCard label="Done"        value={stats?.today_done}        color={COLORS.success} icon="✅" />
+          <StatCard label="In Progress" value={stats?.today_in_progress} color={COLORS.info}    icon="⚡" />
+          <StatCard label="Done"        value={stats?.today_done}        color={COLORS.success} icon="🎯" />
         </View>
 
         {recent.length > 0 && (
@@ -251,20 +252,20 @@ const s = StyleSheet.create({
   center:         { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
   header:         { marginBottom: 20, marginTop: 8 },
   headerRow:      { flexDirection: 'row', alignItems: 'center' },
-  greeting:       { fontSize: 22, fontWeight: '700', color: COLORS.text },
-  company:        { fontSize: 14, color: COLORS.textMuted, marginTop: 2 },
+  greeting:       { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.text },
+  company:        { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textMuted, marginTop: 2 },
   helpBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4,
                     backgroundColor: '#eff0ff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  helpBtnText:    { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
+  helpBtnText:    { fontSize: 12, color: COLORS.primary, fontFamily: FONTS.semiBold },
 
   apptBanner:     { flexDirection: 'row', alignItems: 'center', gap: 12,
                     backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa',
                     borderRadius: 14, padding: 14, marginBottom: 20 },
   apptBannerIcon: { fontSize: 24 },
-  apptBannerTitle:{ fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: '#92400e' },
-  apptBannerSub:  { fontSize: 12, color: '#b45309', marginTop: 2 },
+  apptBannerTitle:{ fontSize: 14, fontFamily: FONTS.semiBold, color: '#92400e' },
+  apptBannerSub:  { fontSize: 12, fontFamily: FONTS.regular, color: '#b45309', marginTop: 2 },
 
-  sectionTitle:   { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
+  sectionTitle:   { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text, marginBottom: 12 },
   statsRow:       { flexDirection: 'row', gap: 10 },
 });
 
@@ -279,7 +280,7 @@ const m = StyleSheet.create({
   title:        { fontSize: 17, fontFamily: 'Poppins_700Bold', color: COLORS.text },
   empty:        { alignItems: 'center', paddingVertical: 48 },
   emptyIcon:    { fontSize: 40, marginBottom: 12 },
-  emptyText:    { fontSize: 15, color: COLORS.textMuted },
+  emptyText:    { fontSize: 15, fontFamily: FONTS.regular, color: COLORS.textMuted },
 
   card:         { backgroundColor: COLORS.background, borderRadius: 14,
                   borderWidth: 1, borderColor: COLORS.border, padding: 14 },
@@ -288,11 +289,11 @@ const m = StyleSheet.create({
   timeBox:      { alignItems: 'flex-end' },
   timeText:     { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: COLORS.primary,
                   backgroundColor: '#eff0ff', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-  dateText:     { fontSize: 13, fontWeight: '700', color: COLORS.text, marginTop: 4 },
-  mobile:       { fontSize: 12, color: COLORS.textMuted, marginBottom: 4 },
-  service:      { fontSize: 13, color: COLORS.text, marginBottom: 2 },
-  label:        { fontWeight: '600' },
-  purpose:      { fontSize: 12, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
+  dateText:     { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 4 },
+  mobile:       { fontSize: 12, fontFamily: FONTS.regular, color: COLORS.textMuted, marginBottom: 4 },
+  service:      { fontSize: 13, fontFamily: FONTS.regular, color: COLORS.text, marginBottom: 2 },
+  label:        { fontFamily: FONTS.semiBold },
+  purpose:      { fontSize: 12, fontFamily: FONTS.regular, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
 
   btnRow:       { flexDirection: 'row', gap: 10, marginTop: 12 },
   btn:          { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },

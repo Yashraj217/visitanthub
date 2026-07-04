@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
 import Seo from '../components/Seo';
+import { useFadeUp } from '../hooks/useFadeUp';
 
 const JSON_LD = {
   '@context': 'https://schema.org',
@@ -404,6 +405,13 @@ function Stick({ color }) {
 }
 
 export default function LandingPage() {
+  const heroRef     = useFadeUp();
+  const featuresRef = useFadeUp();
+  const industriesRef = useFadeUp();
+  const statsRef    = useFadeUp();
+  const howRef      = useFadeUp();
+  const ctaRef      = useFadeUp();
+
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
       <Seo
@@ -428,7 +436,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
 
             {/* ── Left: text + CTAs ── */}
-            <div>
+            <div ref={heroRef} className="fade-up">
               <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 border border-indigo-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 Trusted by offices across India
@@ -488,10 +496,10 @@ export default function LandingPage() {
       {/* ── Features ────────────────────────────────────────────────────────── */}
       <section id="features" className="py-24 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
+          <div ref={featuresRef} className="fade-up text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Features</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Everything your office needs</h2>
-            <p className="text-gray-500 text-lg max-w-2xl mx-auto">
+            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Everything your office needs</h2>
+            <p className="text-gray-500 text-lg leading-relaxed max-w-2xl mx-auto">
               From the first visitor scan to the end-of-day report — VisitantHub handles it all.
             </p>
           </div>
@@ -512,38 +520,42 @@ export default function LandingPage() {
       </section>
 
       {/* ── Who Uses VisitantHub ────────────────────────────────────────────── */}
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Who Uses VisitantHub</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Built for every kind of office</h2>
-            <p className="text-gray-500 text-lg max-w-2xl mx-auto">
-              From a single-desk clinic to a multi-counter government office — if people walk in and wait, VisitantHub is for you.
-            </p>
-          </div>
+      <section className="pb-24 bg-white">
 
-          {/* Photo bento strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-14 rounded-2xl overflow-hidden">
+          {/* Photo bento strip — full width, no gap at top */}
+          <div
+            className="grid gap-1 mb-14"
+            style={{
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gridTemplateRows: 'repeat(2, 200px)',
+            }}>
             {[
-              { url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=900&q=85', label: 'Corporate Reception', span: 'md:col-span-2 md:row-span-2' },
-              { url: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=500&q=85', label: 'Hospital & Clinics', span: '' },
-              { url: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=500&q=85', label: 'Banks & Finance', span: '' },
-              { url: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=500&q=85', label: 'Office Lobbies', span: '' },
-              { url: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=500&q=85', label: 'Educational Institutes', span: '' },
+              { url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=900&q=85', label: 'Corporate Reception', style: { gridColumn: '1 / span 2', gridRow: '1 / span 2' }, heading: true },
+              { url: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=500&q=85', label: 'Hospital & Clinics', style: {} },
+              { url: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=500&q=85', label: 'Banks & Finance', style: {} },
+              { url: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=500&q=85', label: 'Office Lobbies', style: {} },
+              { url: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=500&q=85', label: 'Educational Institutes', style: {} },
             ].map(p => (
-              <div key={p.label} className={`relative overflow-hidden rounded-xl group h-44 ${p.span}`}>
+              <div key={p.label} className="relative overflow-hidden group" style={p.style}>
                 <img
                   src={p.url}
                   alt={p.label}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   loading="lazy"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <div className={`absolute inset-0 ${p.heading ? 'bg-gradient-to-t from-black/70 via-black/20 to-black/40' : 'bg-gradient-to-t from-black/60 via-transparent to-transparent'}`} />
+                {p.heading && (
+                  <div className="absolute top-0 left-0 right-0 p-5">
+                    <p className="text-indigo-300 font-semibold text-xs uppercase tracking-widest mb-1">Who Uses VisitantHub</p>
+                    <h2 className="text-white text-2xl font-extrabold leading-tight">Built for every<br />kind of office</h2>
+                  </div>
+                )}
                 <p className="absolute bottom-3 left-3 text-white text-xs font-semibold drop-shadow">{p.label}</p>
               </div>
             ))}
           </div>
 
+          <div ref={industriesRef} className="fade-up max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {INDUSTRIES.map(ind => (
               <div key={ind.title}
@@ -592,16 +604,16 @@ export default function LandingPage() {
               Try it free — no credit card needed
             </Link>
           </div>
-        </div>
+          </div>
       </section>
 
       {/* ── How It Works ────────────────────────────────────────────────────── */}
       <section id="how-it-works" className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
+          <div ref={howRef} className="fade-up text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">How It Works</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Up and running in minutes</h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto">
+            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Up and running in minutes</h2>
+            <p className="text-gray-500 text-lg leading-relaxed max-w-xl mx-auto">
               No IT team required. Four simple steps from sign-up to your first managed visit.
             </p>
           </div>
@@ -627,9 +639,9 @@ export default function LandingPage() {
       {/* ── Testimonials ────────────────────────────────────────────────────── */}
       <section className="py-24 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-14">
+          <div ref={statsRef} className="fade-up text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Testimonials</p>
-            <h2 className="text-4xl font-extrabold text-gray-900">Loved by office teams</h2>
+            <h2 className="text-4xl font-extrabold text-gray-900 leading-tight">Loved by office teams</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {TESTIMONIALS.map(t => (
@@ -666,8 +678,8 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Pricing</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Simple, transparent pricing</h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto">
+            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Simple, transparent pricing</h2>
+            <p className="text-gray-500 text-lg leading-relaxed max-w-xl mx-auto">
               No hidden fees. Cancel any time. All plans include a 14-day free trial.
             </p>
           </div>
@@ -743,11 +755,11 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA Banner ──────────────────────────────────────────────────────── */}
-      <section className="py-20"
+      <section className="py-24"
         style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #4f46e5 100%)' }}>
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-4xl font-extrabold text-white mb-4">Ready to upgrade your reception?</h2>
-          <p className="text-indigo-200 text-lg mb-8">
+        <div ref={ctaRef} className="fade-up max-w-3xl mx-auto px-6 text-center">
+          <h2 className="text-4xl font-extrabold text-white mb-4 leading-tight">Ready to upgrade your reception?</h2>
+          <p className="text-indigo-200 text-lg leading-relaxed mb-8">
             Join hundreds of offices that replaced paper sign-in books with VisitantHub.
           </p>
           <Link to="/register"
@@ -760,10 +772,10 @@ export default function LandingPage() {
       {/* ── Contact ─────────────────────────────────────────────────────────── */}
       <section id="contact" className="py-24 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-14">
+          <div className="text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Contact</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Get in touch</h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto">
+            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Get in touch</h2>
+            <p className="text-gray-500 text-lg leading-relaxed max-w-xl mx-auto">
               Have questions about pricing, features, or onboarding? Our team is here to help.
             </p>
           </div>
@@ -801,6 +813,45 @@ export default function LandingPage() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Download App ────────────────────────────────────────────────────── */}
+      <section className="py-16 bg-white border-t border-gray-100">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="rounded-3xl overflow-hidden flex flex-col md:flex-row items-center gap-8 p-8 md:p-12"
+            style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #4f46e5 100%)' }}>
+
+            {/* Icon */}
+            <div className="shrink-0 w-20 h-20 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-5xl shadow-xl">
+              📱
+            </div>
+
+            {/* Text */}
+            <div className="flex-1 text-center md:text-left">
+              <p className="text-indigo-300 text-xs font-semibold uppercase tracking-widest mb-1">Mobile App</p>
+              <h3 className="text-white text-2xl font-extrabold mb-2">VisitantHub for Android</h3>
+              <p className="text-indigo-200 text-sm leading-relaxed">
+                Manage visits, approve appointments, and get real-time alerts — right from your phone.
+                Available as a direct APK download.
+              </p>
+            </div>
+
+            {/* Download button */}
+            <div className="shrink-0">
+              <a
+                href="https://visitor.sonnetinfotech.com/VisitantHub-Visitor.apk"
+                download="VisitantHub-Visitor.apk"
+                className="inline-flex items-center gap-3 bg-white text-indigo-700 font-bold px-7 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.523 15.341A4.5 4.5 0 0 1 13.5 18H10.5a4.5 4.5 0 0 1-4.023-2.659L3 9l1.348-.449L7.5 15h9l3.152-6.449L21 9l-3.477 6.341zM12 3a1.5 1.5 0 0 1 1.5 1.5v6.793l2.147-2.146a1.5 1.5 0 0 1 2.121 2.121l-4.5 4.5a1.5 1.5 0 0 1-2.121 0l-4.5-4.5A1.5 1.5 0 1 1 8.232 9.147L10.5 11.293V4.5A1.5 1.5 0 0 1 12 3z"/>
+                </svg>
+                Download APK
+              </a>
+              <p className="text-indigo-300 text-xs text-center mt-2">Android 8.0+ · ~106 MB</p>
+            </div>
           </div>
         </div>
       </section>

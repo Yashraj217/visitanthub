@@ -18,9 +18,10 @@ import AdminVisitsScreen     from '../screens/admin/VisitsScreen';
 import AdminVisitDetail      from '../screens/admin/VisitDetailScreen';
 import AdminEmployeesScreen  from '../screens/admin/EmployeesScreen';
 
-import AssocDashboardScreen from '../screens/associate/DashboardScreen';
-import AssocVisitsScreen    from '../screens/associate/VisitsScreen';
-import AssocVisitDetail     from '../screens/associate/VisitDetailScreen';
+import AssocDashboardScreen  from '../screens/associate/DashboardScreen';
+import AssocVisitsScreen     from '../screens/associate/VisitsScreen';
+import AssocVisitDetail      from '../screens/associate/VisitDetailScreen';
+import MyScheduleScreen      from '../screens/associate/MyScheduleScreen';
 
 import VisitorHistoryScreen from '../screens/VisitorHistoryScreen';
 import MoreScreen from '../screens/MoreScreen';
@@ -54,7 +55,7 @@ function AdminTabs() {
       <AdminTab.Screen name="Employees" component={AdminEmployeesScreen}
         options={{ tabBarIcon: tabIcon('people'), tabBarLabel: 'Associates' }} />
       <AdminTab.Screen name="More" component={MoreScreen}
-        options={{ tabBarIcon: tabIcon('ellipsis-horizontal-circle'), tabBarLabel: 'More' }} />
+        options={{ tabBarIcon: tabIcon('person-circle'), tabBarLabel: 'More' }} />
     </AdminTab.Navigator>
   );
 }
@@ -73,8 +74,10 @@ function AssocTabs() {
         options={{ tabBarIcon: tabIcon('grid'), tabBarLabel: 'Dashboard' }} />
       <AssocTab.Screen name="MyVisits" component={AssocVisitsScreen}
         options={{ tabBarIcon: tabIcon('clipboard'), tabBarLabel: 'My Visits' }} />
+      <AssocTab.Screen name="MySchedule" component={MyScheduleScreen}
+        options={{ tabBarIcon: tabIcon('calendar'), tabBarLabel: 'Schedule' }} />
       <AssocTab.Screen name="More" component={MoreScreen}
-        options={{ tabBarIcon: tabIcon('ellipsis-horizontal-circle'), tabBarLabel: 'More' }} />
+        options={{ tabBarIcon: tabIcon('person-circle'), tabBarLabel: 'More' }} />
     </AssocTab.Navigator>
   );
 }

@@ -28,6 +28,7 @@ app.use('/api/departments',   require('./routes/departments'));
 app.use('/api/designations', require('./routes/designations'));
 app.use('/api/display',     require('./routes/display'));
 app.use('/api/scheduling',  require('./routes/scheduling'));
+app.use('/api/stages',      require('./routes/stages'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

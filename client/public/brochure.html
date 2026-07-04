@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VisitantHub — Product Brochure</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo: #4f46e5;
+      --violet: #7c3aed;
+      --indigo-dark: #1e1b4b;
+      --indigo-light: #e0e7ff;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-900: #111827;
+    }
+
+    html, body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #e5e7eb;
+      color: var(--gray-900);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* ── Page layout ── */
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      background: #fff;
+      margin: 24px auto;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 4px 40px rgba(0,0,0,.18);
+    }
+
+    @page { size: A4; margin: 0; }
+    @media print {
+      html, body { background: none; }
+      .page { margin: 0; box-shadow: none; page-break-after: always; }
+      .no-print { display: none !important; }
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       FRONT PAGE
+    ───────────────────────────────────────────────────────── */
+    .front {
+      display: flex;
+      flex-direction: column;
+      min-height: 297mm;
+    }
+
+    /* Top hero — corporate reception photo + gradient */
+    .front-hero {
+      position: relative;
+      height: 148mm;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .front-hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 30%;
+    }
+    .front-hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(160deg, rgba(30,27,75,.82) 0%, rgba(79,70,229,.68) 55%, rgba(124,58,237,.5) 100%);
+    }
+
+    /* Logo + nav inside hero */
+    .front-topbar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7mm 10mm;
+      z-index: 2;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 15px;
+      color: #fff;
+    }
+    .brand-name {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -.3px;
+    }
+    .front-badge {
+      background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: .5px;
+    }
+
+    /* Hero headline */
+    .front-headline {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 0 10mm 8mm;
+      z-index: 2;
+    }
+    .front-eyebrow {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      margin-bottom: 6px;
+    }
+    .front-h1 {
+      font-size: 30px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.15;
+      margin-bottom: 10px;
+    }
+    .front-h1 span {
+      background: linear-gradient(90deg, #a5b4fc, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .front-sub {
+      font-size: 11px;
+      color: rgba(255,255,255,.75);
+      max-width: 120mm;
+      line-height: 1.6;
+    }
+
+    /* TV mockup section */
+    .front-tv-section {
+      background: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+      padding: 8mm 10mm;
+      flex-shrink: 0;
+    }
+    .tv-label {
+      text-align: center;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      margin-bottom: 5mm;
+    }
+    .tv-frame {
+      border-radius: 10px;
+      overflow: hidden;
+      border: 3px solid #374151;
+      background: #111827;
+    }
+    .tv-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 10px;
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+    }
+    .tv-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 9px;
+      color: rgba(255,255,255,.5);
+      font-family: monospace;
+    }
+    .tv-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #6366f1;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+    .tv-time { font-size: 9px; color: rgba(255,255,255,.3); font-family: monospace; }
+    .tv-cols {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .tv-col {
+      border-right: 1px solid #374151;
+      padding: 6px 8px 8px;
+    }
+    .tv-col:last-child { border-right: none; }
+    .tv-col-header {
+      text-align: center;
+      padding-bottom: 5px;
+      margin-bottom: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .tv-serving-label, .tv-waiting-label {
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.35);
+      margin-bottom: 3px;
+    }
+    .tv-serving-card {
+      border-radius: 6px;
+      padding: 5px 6px;
+      text-align: center;
+      margin-bottom: 5px;
+    }
+    .tv-serving-ref { font-size: 9px; font-weight: 700; font-family: monospace; }
+    .tv-serving-name { font-size: 7.5px; color: rgba(255,255,255,.75); margin-top: 1px; }
+    .tv-waiting-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,255,255,.05);
+      border-radius: 4px;
+      padding: 3px 5px;
+      margin-bottom: 2px;
+    }
+    .tv-waiting-num { font-size: 7px; color: rgba(255,255,255,.25); font-family: monospace; width: 10px; }
+    .tv-waiting-name { font-size: 7.5px; color: rgba(255,255,255,.6); }
+    .tv-ticker {
+      background: rgba(79,70,229,.8);
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tv-ticker-label { font-size: 8px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .tv-ticker-text { font-size: 8px; color: rgba(199,210,254,.85); }
+    .tv-stand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .tv-neck { width: 18px; height: 10px; background: #4b5563; border-radius: 0 0 4px 4px; }
+    .tv-base { width: 60px; height: 6px; background: #4b5563; border-radius: 3px; margin-top: 1px; }
+
+    /* Stats strip */
+    .front-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: #fff;
+      border-top: 3px solid var(--indigo);
+    }
+    .stat-item {
+      padding: 6mm 0;
+      text-align: center;
+      border-right: 1px solid #e5e7eb;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--indigo-dark);
+      line-height: 1;
+      margin-bottom: 3px;
+    }
+    .stat-label {
+      font-size: 9px;
+      color: var(--gray-500);
+      font-weight: 500;
+      letter-spacing: .3px;
+    }
+
+    /* Front bottom strip */
+    .front-cta-strip {
+      background: linear-gradient(90deg, var(--indigo), var(--violet));
+      padding: 5mm 10mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+    }
+    .front-cta-text { color: #fff; font-size: 11px; font-weight: 600; }
+    .front-cta-url {
+      background: rgba(255,255,255,.2);
+      border: 1px solid rgba(255,255,255,.4);
+      border-radius: 6px;
+      padding: 4px 12px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       BACK PAGE
+    ───────────────────────────────────────────────────────── */
+    .back {
+      display: flex;
+      flex-direction: column;
+      min-height: 297mm;
+    }
+
+    /* Back header */
+    .back-header {
+      background: linear-gradient(135deg, var(--indigo-dark), var(--indigo));
+      padding: 8mm 10mm 7mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .back-header-left h2 {
+      font-size: 18px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.2;
+      margin-bottom: 3px;
+    }
+    .back-header-left p {
+      font-size: 10px;
+      color: rgba(165,180,252,.9);
+    }
+    .back-qr-box {
+      width: 26mm;
+      height: 30mm;
+      background: #fff;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 3px;
+    }
+    .back-qr-img {
+      width: 22mm;
+      height: 22mm;
+      display: block;
+    }
+    .back-qr-label {
+      font-size: 6.5px;
+      font-weight: 700;
+      color: var(--indigo);
+      text-align: center;
+    }
+
+    /* Features grid */
+    .section-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--indigo);
+      margin-bottom: 4mm;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3mm;
+    }
+    .feature-card {
+      background: var(--gray-50);
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 4mm;
+    }
+    .feature-icon {
+      font-size: 16px;
+      margin-bottom: 3mm;
+    }
+    .feature-title {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 2mm;
+      line-height: 1.3;
+    }
+    .feature-desc {
+      font-size: 8px;
+      color: var(--gray-500);
+      line-height: 1.55;
+    }
+
+    /* Steps */
+    .steps-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3mm;
+    }
+    .step-card {
+      text-align: center;
+      position: relative;
+    }
+    .step-num-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 900;
+      color: #fff;
+      margin: 0 auto 3mm;
+    }
+    .step-title {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 1.5mm;
+      line-height: 1.3;
+    }
+    .step-desc {
+      font-size: 7.5px;
+      color: var(--gray-500);
+      line-height: 1.5;
+    }
+    .step-connector {
+      position: absolute;
+      top: 18px;
+      right: -8px;
+      width: 16px;
+      height: 1.5px;
+      background: #e0e7ff;
+    }
+
+    /* Plans */
+    .plans-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3mm;
+    }
+    .plan-card {
+      border-radius: 8px;
+      padding: 4mm;
+      border: 1.5px solid #e5e7eb;
+    }
+    .plan-card.highlight {
+      background: linear-gradient(145deg, var(--indigo), var(--violet));
+      border-color: transparent;
+    }
+    .plan-name {
+      font-size: 10px;
+      font-weight: 800;
+      margin-bottom: 1mm;
+    }
+    .plan-price {
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1;
+      margin-bottom: 1mm;
+    }
+    .plan-period { font-size: 9px; font-weight: 400; }
+    .plan-features { margin-top: 3mm; }
+    .plan-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+      font-size: 8px;
+      line-height: 1.45;
+      margin-bottom: 1.5mm;
+    }
+    .plan-check { color: #22c55e; font-size: 9px; flex-shrink: 0; }
+    .plan-check.white { color: #a5b4fc; }
+
+    /* Contact */
+    .contact-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3mm;
+    }
+    .contact-card {
+      background: var(--gray-50);
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 4mm;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .contact-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .contact-label {
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--indigo);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 2px;
+    }
+    .contact-val {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--gray-900);
+      line-height: 1.5;
+    }
+
+    /* Back footer */
+    .back-footer {
+      background: var(--gray-900);
+      padding: 5mm 10mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+    }
+    .back-footer-brand { display: flex; align-items: center; gap: 7px; }
+    .back-footer-name { font-size: 13px; font-weight: 800; color: #fff; }
+    .back-footer-tagline { font-size: 9px; color: rgba(255,255,255,.45); margin-top: 1px; }
+    .back-footer-right { font-size: 8.5px; color: rgba(255,255,255,.4); text-align: right; }
+
+    /* ── Padding container ── */
+    .back-body { padding: 7mm 10mm; flex: 1; display: flex; flex-direction: column; gap: 6mm; }
+
+    /* ── Print button ── */
+    .print-btn {
+      display: block;
+      margin: 0 auto 16px;
+      padding: 10px 28px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(79,70,229,.4);
+    }
+    .print-btn:hover { opacity: .9; }
+  </style>
+</head>
+<body>
+
+  <!-- Print button (hidden when printing) -->
+  <div style="text-align:center; padding: 20px 0 4px;" class="no-print">
+    <p style="font-family:'Inter',sans-serif; font-size:13px; color:#6b7280; margin-bottom:10px;">
+      Open in browser · Press <strong>Ctrl + P</strong> → <em>Save as PDF</em> for a print-ready A4 brochure.
+    </p>
+    <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       PAGE 1 — FRONT
+  ════════════════════════════════════════════ -->
+  <div class="page front">
+
+    <!-- Hero photo -->
+    <div class="front-hero">
+      <img
+        src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=90"
+        alt="Corporate Reception"
+        crossorigin="anonymous"
+      />
+      <div class="front-hero-overlay"></div>
+
+      <!-- Top bar -->
+      <div class="front-topbar">
+        <div class="brand">
+          <div class="brand-logo">V</div>
+          <span class="brand-name">VisitantHub</span>
+        </div>
+        <div class="front-badge">● TRUSTED BY OFFICES ACROSS INDIA</div>
+      </div>
+
+      <!-- Headline -->
+      <div class="front-headline">
+        <p class="front-eyebrow">Visitor Management System</p>
+        <h1 class="front-h1">
+          Smarter Receptions.<br/>
+          <span>Effortless Check-Ins.</span>
+        </h1>
+        <p class="front-sub">
+          Replace paper sign-in books with a digital-first visitor experience —
+          self-check-in kiosks, live TV queues, and instant WhatsApp alerts for every visit.
+        </p>
+      </div>
+    </div>
+
+    <!-- Live TV Display Board mockup -->
+    <div class="front-tv-section">
+      <p class="tv-label">Live TV Display Board — as seen in your reception</p>
+
+      <div class="tv-frame">
+        <!-- Bezel top bar -->
+        <div class="tv-topbar">
+          <div class="tv-indicator">
+            <div class="tv-dot"></div>
+            VisitantHub Live
+          </div>
+          <span class="tv-time">10:45 AM</span>
+        </div>
+
+        <!-- Service columns -->
+        <div class="tv-cols">
+
+          <!-- Account Opening -->
+          <div class="tv-col">
+            <div class="tv-col-header" style="border-bottom: 2px solid #6366f1; margin-bottom:6px;">Account Opening</div>
+            <p class="tv-serving-label">Now Serving</p>
+            <div class="tv-serving-card" style="background: rgba(99,102,241,.2); border: 1px solid rgba(99,102,241,.4); margin-bottom:5px;">
+              <div class="tv-serving-ref" style="color:#818cf8;">ACC-007</div>
+              <div class="tv-serving-name">Rajan Mehta</div>
+            </div>
+            <p class="tv-waiting-label">Waiting (3)</p>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">1</span><span class="tv-waiting-name">Priya Sharma</span></div>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">2</span><span class="tv-waiting-name">Arjun Nair</span></div>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">3</span><span class="tv-waiting-name">Sneha Patil</span></div>
+          </div>
+
+          <!-- Loan Services -->
+          <div class="tv-col">
+            <div class="tv-col-header" style="border-bottom: 2px solid #22c55e; margin-bottom:6px;">Loan Services</div>
+            <p class="tv-serving-label">Now Serving</p>
+            <div class="tv-serving-card" style="background: rgba(34,197,94,.2); border: 1px solid rgba(34,197,94,.4); margin-bottom:5px;">
+              <div class="tv-serving-ref" style="color:#4ade80;">LON-003</div>
+              <div class="tv-serving-name">Deepak Verma</div>
+            </div>
+            <p class="tv-waiting-label">Waiting (2)</p>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">1</span><span class="tv-waiting-name">Kavya Rao</span></div>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">2</span><span class="tv-waiting-name">Manish Tiwari</span></div>
+          </div>
+
+          <!-- Customer Support -->
+          <div class="tv-col">
+            <div class="tv-col-header" style="border-bottom: 2px solid #f59e0b; margin-bottom:6px;">Customer Support</div>
+            <p class="tv-serving-label">Now Serving</p>
+            <div class="tv-serving-card" style="background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); margin-bottom:5px;">
+              <div style="font-size:7.5px; color:rgba(255,255,255,.3);">— Available —</div>
+            </div>
+            <p class="tv-waiting-label">Waiting (4)</p>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">1</span><span class="tv-waiting-name">Sunita Joshi</span></div>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">2</span><span class="tv-waiting-name">Amit Kumar</span></div>
+            <div class="tv-waiting-row"><span class="tv-waiting-num">3</span><span class="tv-waiting-name">Pooja Singh</span></div>
+          </div>
+        </div>
+
+        <!-- Ticker -->
+        <div class="tv-ticker">
+          <span class="tv-ticker-label">📢 NOTICE</span>
+          <span class="tv-ticker-text">Scan the QR code to check in instantly • Token numbers are called in order • Please keep your reference number ready</span>
+        </div>
+      </div>
+
+      <!-- Stand -->
+      <div class="tv-stand">
+        <div class="tv-neck"></div>
+        <div class="tv-base"></div>
+      </div>
+    </div>
+
+    <!-- Stats strip -->
+    <div class="front-stats">
+      <div class="stat-item">
+        <div class="stat-val">10,000+</div>
+        <div class="stat-label">Visits Managed</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">99.9%</div>
+        <div class="stat-label">Uptime SLA</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">&lt; 60s</div>
+        <div class="stat-label">Check-in Time</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">5 min</div>
+        <div class="stat-label">Setup Time</div>
+      </div>
+    </div>
+
+    <!-- CTA strip -->
+    <div class="front-cta-strip">
+      <span class="front-cta-text">Start free — no credit card required · 14-day trial included</span>
+      <span class="front-cta-url">visitanthub.com</span>
+    </div>
+
+  </div>
+
+
+  <!-- ════════════════════════════════════════════
+       PAGE 2 — BACK
+  ════════════════════════════════════════════ -->
+  <div class="page back">
+
+    <!-- Header -->
+    <div class="back-header">
+      <div class="back-header-left">
+        <h2>Everything Your Office<br/>Reception Needs</h2>
+        <p>Cloud-based · Works on any device · No IT team required</p>
+      </div>
+      <!-- Real QR code — www.visitanthub.com -->
+      <div class="back-qr-box">
+        <img
+          class="back-qr-img"
+          src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=1e1b4b&bgcolor=ffffff&data=https%3A%2F%2Fwww.visitanthub.com&qzone=1&format=png"
+          alt="QR code — www.visitanthub.com"
+        />
+        <span class="back-qr-label">SCAN TO VISIT</span>
+      </div>
+    </div>
+
+    <div class="back-body">
+
+      <!-- Features -->
+      <div>
+        <p class="section-label">Key Features</p>
+        <div class="features-grid">
+
+          <div class="feature-card">
+            <div class="feature-icon">📱</div>
+            <div class="feature-title">Smart Visitor Kiosk</div>
+            <div class="feature-desc">Visitors self-check-in from any phone, tablet, or kiosk. No app download, no paper forms — just a QR scan.</div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">📺</div>
+            <div class="feature-title">Live TV Display Board</div>
+            <div class="feature-desc">Real-time queue on your office TV, grouped by service. Walk-ins scan the QR on-screen to join the queue.</div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">💬</div>
+            <div class="feature-title">Instant WhatsApp Alerts</div>
+            <div class="feature-desc">Associates get a WhatsApp notification the moment a visitor checks in — no missed arrivals.</div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <div class="feature-title">Real-Time Analytics</div>
+            <div class="feature-desc">Track visit trends by day, week, or month. Drill down by service with interactive charts and Excel export.</div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🎨</div>
+            <div class="feature-title">Custom Branding</div>
+            <div class="feature-desc">Upload your logo, set your sidebar colour, and get a unique kiosk URL. Visitors see your brand everywhere.</div>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <div class="feature-title">Role-Based Access</div>
+            <div class="feature-desc">Super Admin, Company Admin, and Associate roles. Everyone sees exactly what they need — nothing more.</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- How It Works -->
+      <div>
+        <p class="section-label">How It Works — 4 Simple Steps</p>
+        <div class="steps-row">
+          <div class="step-card">
+            <div class="step-num-box">01</div>
+            <div class="step-title">Set Up Your Office</div>
+            <div class="step-desc">Register, add services, assign associates and configure your kiosk URL in minutes.</div>
+            <div class="step-connector"></div>
+          </div>
+          <div class="step-card">
+            <div class="step-num-box">02</div>
+            <div class="step-title">Visitor Scans & Checks In</div>
+            <div class="step-desc">Display the QR at reception. Visitors scan, fill a short form, and are queued instantly.</div>
+            <div class="step-connector"></div>
+          </div>
+          <div class="step-card">
+            <div class="step-num-box">03</div>
+            <div class="step-title">Associate Gets Notified</div>
+            <div class="step-desc">The right associate sees the arrival on their portal and via WhatsApp.</div>
+            <div class="step-connector"></div>
+          </div>
+          <div class="step-card">
+            <div class="step-num-box">04</div>
+            <div class="step-title">Track & Improve</div>
+            <div class="step-desc">Use dashboard analytics to understand peak times, demand, and associate workload.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pricing -->
+      <div>
+        <p class="section-label">Pricing — Simple & Transparent</p>
+        <div class="plans-row">
+
+          <div class="plan-card">
+            <div class="plan-name" style="color:#1e1b4b;">Starter</div>
+            <div class="plan-price" style="color:#1e1b4b;">₹0 <span class="plan-period" style="color:#6b7280;">/month</span></div>
+            <div class="plan-features">
+              <div class="plan-feature"><span class="plan-check">✓</span> Up to 500 visits/month</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> 1 associate · 1 service</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> Visitor kiosk &amp; QR check-in</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> WhatsApp notifications</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> Basic analytics</div>
+            </div>
+          </div>
+
+          <div class="plan-card highlight">
+            <div class="plan-name" style="color:#fff;">Professional</div>
+            <div class="plan-price" style="color:#fff;">₹999 <span class="plan-period" style="color:#a5b4fc;">/month</span></div>
+            <div class="plan-features">
+              <div class="plan-feature" style="color:#e0e7ff;"><span class="plan-check white">✓</span> Unlimited visits</div>
+              <div class="plan-feature" style="color:#e0e7ff;"><span class="plan-check white">✓</span> 15 associates · 15 services</div>
+              <div class="plan-feature" style="color:#e0e7ff;"><span class="plan-check white">✓</span> TV display board</div>
+              <div class="plan-feature" style="color:#e0e7ff;"><span class="plan-check white">✓</span> Advanced analytics &amp; export</div>
+              <div class="plan-feature" style="color:#e0e7ff;"><span class="plan-check white">✓</span> Custom branding &amp; priority support</div>
+            </div>
+          </div>
+
+          <div class="plan-card">
+            <div class="plan-name" style="color:#1e1b4b;">Enterprise</div>
+            <div class="plan-price" style="color:#1e1b4b;">Custom</div>
+            <div class="plan-features">
+              <div class="plan-feature"><span class="plan-check">✓</span> Everything in Professional</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> Unlimited associates</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> Multi-branch support</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> Dedicated onboarding &amp; SLA</div>
+              <div class="plan-feature"><span class="plan-check">✓</span> On-premise option available</div>
+            </div>
+          </div>
+
+        </div>
+        <p style="font-size:7.5px; color:#9ca3af; margin-top:3mm;">All prices exclude GST. Annual billing available at 20% discount. Contact us for volume pricing.</p>
+      </div>
+
+      <!-- Contact -->
+      <div>
+        <p class="section-label">Get In Touch</p>
+        <div class="contact-row">
+          <div class="contact-card">
+            <span class="contact-icon">📧</span>
+            <div>
+              <div class="contact-label">Email</div>
+              <div class="contact-val">info@sonnetinfotech.com</div>
+            </div>
+          </div>
+          <div class="contact-card">
+            <span class="contact-icon">📞</span>
+            <div>
+              <div class="contact-label">Phone</div>
+              <div class="contact-val">+91 81950 11181</div>
+            </div>
+          </div>
+          <div class="contact-card">
+            <span class="contact-icon">🌐</span>
+            <div>
+              <div class="contact-label">Website</div>
+              <div class="contact-val">www.visitanthub.com</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /back-body -->
+
+    <!-- Footer -->
+    <div class="back-footer">
+      <div class="back-footer-brand">
+        <div class="brand-logo" style="width:26px;height:26px;font-size:12px;">V</div>
+        <div>
+          <div class="back-footer-name">VisitantHub</div>
+          <div class="back-footer-tagline">Visitor Management Made Effortless</div>
+        </div>
+      </div>
+      <div class="back-footer-right">
+        A product by Sonnet Infotech Pvt. Ltd.<br/>
+        © 2026 VisitantHub · All rights reserved
+      </div>
+    </div>
+
+  </div><!-- /page back -->
+
+</body>
+</html>

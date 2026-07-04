@@ -64,8 +64,18 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-splash-screen",
-      "expo-font"
+      "expo-font",
+      "expo-updates"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/46916471-9b35-4359-8623-4432f58d7f8f",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 3000
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "eas": {
         "projectId": "46916471-9b35-4359-8623-4432f58d7f8f"

@@ -26,6 +26,8 @@ router.get('/:slug', async (req, res) => {
     const [visits] = await pool.query(
       `SELECT v.id, v.ref_number, v.visit_time, v.status, v.service_name, v.purpose,
               v.employee_id, v.approved_at,
+              v.current_stage_name, v.current_stage_color,
+              v.is_ready, v.stage_status, v.stage_waiting_since,
               vis.name  AS visitor_name,
               emp.name  AS employee_name,
               emp.designation,
@@ -110,7 +112,13 @@ router.get('/:slug', async (req, res) => {
       [company.id, todayStr]
     );
 
-    res.json({ company, visits, upcoming });
+    // All active services for this company — so empty-queue services still appear on board
+    const [services] = await pool.query(
+      `SELECT name FROM services WHERE company_id = ? AND is_active = 1 ORDER BY name ASC`,
+      [company.id]
+    );
+
+    res.json({ company, visits, upcoming, services: services.map(s => s.name) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

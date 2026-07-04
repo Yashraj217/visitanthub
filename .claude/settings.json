@@ -58,7 +58,17 @@
       "Bash(./gradlew assembleRelease)",
       "Bash(./gradlew.bat assembleRelease)",
       "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/node_modules/axios/package.json'\\); console.log\\(p.version\\)\")",
-      "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/package.json'\\); const deps={...p.dependencies,...p.devDependencies}; Object.keys\\(deps\\).filter\\(k=>k.includes\\('date'\\)||k.includes\\('picker'\\)||k.includes\\('modal'\\)\\).forEach\\(k=>console.log\\(k,deps[k]\\)\\)\")"
+      "Bash(node -e \"const p=require\\('c:/IIS/2custo/mobile/package.json'\\); const deps={...p.dependencies,...p.devDependencies}; Object.keys\\(deps\\).filter\\(k=>k.includes\\('date'\\)||k.includes\\('picker'\\)||k.includes\\('modal'\\)\\).forEach\\(k=>console.log\\(k,deps[k]\\)\\)\")",
+      "Bash(mysql -u root -pIndia1234# visitor_management -e \"DESCRIBE visits;\")",
+      "PowerShell(mysql -u root \"-pIndia1234#\" visitor_management -e \"DESCRIBE visits;\" 2>&1)",
+      "PowerShell(cd c:\\\\IIS\\\\2custo\\\\server; $env:DB_PASSWORD=\"India1234#\"; node src/scripts/migrate_stages.js 2>&1)",
+      "PowerShell(cd c:\\\\IIS\\\\2custo\\\\server; $proc = Get-Process -Name \"node\" -ErrorAction SilentlyContinue; if \\($proc\\) { \"Found node process\\(es\\): $\\($proc.Id\\)\" } else { \"No node processes running\" })",
+      "PowerShell(cd c:\\\\IIS\\\\2custo\\\\server; $env:DB_PASSWORD=\"India1234#\"; node -e \"require\\('./src/app'\\); setTimeout\\(\\(\\) => process.exit\\(0\\), 2000\\)\" 2>&1 | Select-Object -First 5)",
+      "PowerShell(cd c:\\\\IIS\\\\2custo\\\\mobile; $env:CI=\"1\"; npx eas-cli update --channel production --message \"feat: multi-stage status tracking\" --environment production 2>&1)",
+      "PowerShell($apk = \"c:\\\\IIS\\\\2custo\\\\mobile\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\release\\\\app-release.apk\"; if \\(Test-Path $apk\\) { $size = \\(Get-Item $apk\\).Length / 1MB; \"APK found: $\\([math]::Round\\($size,1\\)\\) MB\" } else { \"APK not found\" })",
+      "PowerShell(Copy-Item \"c:\\\\IIS\\\\2custo\\\\mobile\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\release\\\\app-release.apk\" -Destination \"c:\\\\IIS\\\\2custo\\\\server\\\\VisitantHub-Visitor.apk\" -Force)",
+      "PowerShell(Copy-Item \"c:\\\\IIS\\\\2custo\\\\mobile\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\release\\\\app-release.apk\" -Destination \"c:\\\\IIS\\\\2custo\\\\VisitantHub-Visitor.apk\" -Force)",
+      "PowerShell(\"Deployed to server/ and project root\")"
     ]
   }
 }

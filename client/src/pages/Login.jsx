@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
@@ -9,6 +9,8 @@ export default function Login() {
   const [error, setError]     = useState('');
   const { login } = useAuth();
   const navigate  = useNavigate();
+  const location  = useLocation();
+  const from      = location.state?.from?.pathname;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -16,9 +18,10 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(form.email, form.password);
-      if (user.role === 'super_admin')        navigate('/super-admin');
-      else if (user.role === 'company_admin') navigate('/dashboard');
-      else if (user.role === 'company_user')  navigate('/user-portal');
+      const defaultPath =
+        user.role === 'super_admin'   ? '/super-admin' :
+        user.role === 'company_admin' ? '/dashboard' : '/user-portal';
+      navigate(from || defaultPath, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid email or password');
     } finally {

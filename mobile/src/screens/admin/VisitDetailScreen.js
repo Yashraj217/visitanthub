@@ -31,29 +31,95 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
   const { user }     = useAuth();
   const [visit,       setVisit]       = useState(route.params.visit);
   const [employees,   setEmployees]   = useState([]);
-  const [reassigning, setReassigning] = useState(false);
-  const [loading,     setLoading]     = useState(false);
-  const [fetching,    setFetching]    = useState(true);
+  const [reassigning,   setReassigning]   = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [fetching,      setFetching]      = useState(true);
+  const [loadingEmps,   setLoadingEmps]   = useState(false);
 
-  // Fetch full visit detail (includes custom_fields)
+  // Stage tracking
+  const [stages,          setStages]          = useState([]);
+  const [advancingStage,  setAdvancingStage]  = useState(false);
+  const [waitingLoading,  setWaitingLoading]  = useState(false);
+  const [nowMs,           setNowMs]           = useState(() => Date.now());
+
+  // Fetch full visit detail + stages
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     api.get(`/visits/${visit.id}`)
       .then(({ data }) => setVisit(data))
       .catch(() => {})
       .finally(() => setFetching(false));
-    api.get('/visits/employees')
-      .then(({ data }) => setEmployees(data))
-      .catch(() => {});
+    api.get('/stages').then(({ data }) => setStages(data)).catch(() => {});
   }, []);
 
-  async function changeStatus(nextStatus) {
+  async function handleAdvanceStage(stageId) {
+    setAdvancingStage(true);
+    try {
+      const { data } = await api.put(`/visits/${visit.id}/stage`, { stageId });
+      setVisit(v => ({
+        ...v,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        stage_logs:          data.logs,
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      }));
+    } catch { Alert.alert('Error', 'Failed to update stage.'); }
+    finally { setAdvancingStage(false); }
+  }
+
+  async function handleStageWaiting(stage_status) {
+    setWaitingLoading(true);
+    try {
+      const { data } = await api.put(`/visits/${visit.id}/stage-waiting`, { stage_status });
+      setVisit(v => ({ ...v, stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since }));
+    } catch { Alert.alert('Error', 'Failed to update waiting status.'); }
+    finally { setWaitingLoading(false); }
+  }
+
+  function fmtElapsedMs(since) {
+    if (!since) return '0m';
+    const ms = nowMs - new Date(since).getTime();
+    if (ms < 0) return '0m';
+    const m = Math.floor(ms / 60000);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60 ? (m % 60) + 'm' : ''}`.trim();
+  }
+
+  async function fetchEmployees() {
+    setLoadingEmps(true);
+    try {
+      const { data } = await api.get('/visits/employees');
+      setEmployees(data);
+    } catch { /* silent */ }
+    finally { setLoadingEmps(false); }
+  }
+
+  async function changeStatus(nextStatus, force = false) {
     Alert.alert('Update Status', `Change to "${STATUS_LABELS[nextStatus] || nextStatus}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm', onPress: async () => {
           setLoading(true);
           try {
-            await api.put(`/visits/${visit.id}/status`, { status: nextStatus });
+            const { data } = await api.put(`/visits/${visit.id}/status`, { status: nextStatus, force });
+            if (data?.queue_warning) {
+              setLoading(false);
+              Alert.alert(
+                'Someone is ahead',
+                data.message || `${data.ahead_visitor} is waiting before this visitor.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Approve Anyway', onPress: () => changeStatus(nextStatus, true) },
+                ]
+              );
+              return;
+            }
             if (nextStatus === 'completed' || nextStatus === 'rejected') {
               navigation.goBack();
             } else {
@@ -130,8 +196,6 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
             )}
           </View>
           <Row label="Phone"   value={visit.mobile} />
-          <Row label="Email"   value={visit.visitor_email} />
-          <Row label="Address" value={visit.address} />
         </View>
 
         {/* Visit details */}
@@ -163,6 +227,88 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Stage tracker */}
+        {stages.length > 0 && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Stage Progress</Text>
+            <View style={st.stageRow}>
+              {stages.map((stage, i) => {
+                const isCurrent = visit.current_stage_id === stage.id;
+                const logs      = visit.stage_logs || [];
+                const isDone    = logs.some(l => l.stage_name === stage.name);
+                return (
+                  <View key={stage.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={[
+                        st.stageBtn,
+                        isCurrent && { backgroundColor: stage.color, borderColor: stage.color },
+                        isDone && !isCurrent && { backgroundColor: stage.color + 'aa', borderColor: stage.color },
+                        !isCurrent && !isDone && st.stageBtnInactive,
+                      ]}
+                      disabled={advancingStage}
+                      onPress={() => handleAdvanceStage(isCurrent ? null : stage.id)}
+                      activeOpacity={0.75}>
+                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' }]}>
+                        {isDone && !isCurrent ? '✓ ' : ''}{stage.name}{stage.is_final ? ' 🏁' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                    {i < stages.length - 1 && <Text style={st.arrow}>›</Text>}
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Waiting toggle */}
+            {visit.current_stage_id && (
+              <View style={st.waitingRow}>
+                {visit.stage_status === 'waiting' ? (
+                  <>
+                    <View style={st.waitingBadge}>
+                      <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
+                    </View>
+                    {visit.stage_waiting_since && (
+                      <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
+                    )}
+                    <TouchableOpacity
+                      style={[st.waitingBtn, st.callInBtn]}
+                      onPress={() => handleStageWaiting('in_progress')}
+                      disabled={waitingLoading}>
+                      <Text style={st.waitingBtnText}>Call In ▶</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={st.waitingHint}>
+                      {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[st.waitingBtn, st.markWaitingBtn]}
+                      onPress={() => handleStageWaiting('waiting')}
+                      disabled={waitingLoading}>
+                      <Text style={[st.waitingBtnText, { color: '#92400e' }]}>Mark Waiting</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+
+            {(visit.stage_logs || []).length > 0 && (
+              <View style={st.logBox}>
+                {(visit.stage_logs || []).map((log, i) => (
+                  <View key={i} style={st.logRow}>
+                    <View style={[st.logDot, { backgroundColor: log.color || COLORS.primary }]} />
+                    <Text style={st.logName}>{log.stage_name}</Text>
+                    <Text style={st.logTime}>
+                      {new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </Text>
+                    {log.entered_by_name && <Text style={st.logBy}>· {log.entered_by_name}</Text>}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Status actions */}
         {actions.length > 0 && (
           <View style={s.card}>
@@ -182,7 +328,10 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
           <Text style={s.current}>
             Assigned to: <Text style={{ color: COLORS.primary, fontWeight: '600' }}>{visit.employee_name || 'Unassigned'}</Text>
           </Text>
-          <TouchableOpacity style={s.reassignBtn} onPress={() => setReassigning(true)}>
+          <TouchableOpacity
+            style={s.reassignBtn}
+            activeOpacity={0.7}
+            onPress={() => { setReassigning(true); fetchEmployees(); }}>
             <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.primary} />
             <Text style={s.reassignText}>Change Associate</Text>
           </TouchableOpacity>
@@ -205,27 +354,42 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
               <Ionicons name="close" size={24} color={COLORS.text} />
             </TouchableOpacity>
           </View>
-          <FlatList
-            data={employees}
-            keyExtractor={item => String(item.id)}
-            contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[s.empItem, visit.employee_id === item.id && s.empItemActive]}
-                onPress={() => reassign(item)}>
-                <View style={s.empAvatar}>
-                  <Text style={s.empAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+          {loadingEmps ? (
+            <View style={s.empLoading}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={s.empLoadingText}>Loading associates…</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={employees}
+              keyExtractor={item => String(item.id)}
+              contentContainerStyle={{ padding: 16 }}
+              ListEmptyComponent={
+                <View style={s.empEmpty}>
+                  <Ionicons name="people-outline" size={40} color={COLORS.textMuted} />
+                  <Text style={s.empEmptyText}>No associates found</Text>
+                  <Text style={s.empEmptySubText}>Make sure employees are marked active in settings.</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.empName}>{item.name}</Text>
-                  {item.designation && <Text style={s.empDesig}>{item.designation}</Text>}
-                </View>
-                {visit.employee_id === item.id && (
-                  <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                )}
-              </TouchableOpacity>
-            )}
-          />
+              }
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[s.empItem, visit.employee_id === item.id && s.empItemActive]}
+                  activeOpacity={0.7}
+                  onPress={() => reassign(item)}>
+                  <View style={s.empAvatar}>
+                    <Text style={s.empAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.empName}>{item.name}</Text>
+                    {item.designation && <Text style={s.empDesig}>{item.designation}</Text>}
+                  </View>
+                  {visit.employee_id === item.id && (
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          )}
         </View>
       </Modal>
     </View>
@@ -268,6 +432,11 @@ const s = StyleSheet.create({
                   padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border,
                   backgroundColor: COLORS.card },
   modalTitle:   { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  empLoading:      { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  empLoadingText:  { marginTop: 12, fontSize: 14, color: COLORS.textMuted },
+  empEmpty:        { alignItems: 'center', paddingVertical: 60, paddingHorizontal: 24 },
+  empEmptyText:    { fontSize: 16, fontWeight: '600', color: COLORS.text, marginTop: 14 },
+  empEmptySubText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 },
   empItem:      { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12,
                   borderRadius: 12, backgroundColor: COLORS.card, marginBottom: 8,
                   borderWidth: 1, borderColor: COLORS.border },
@@ -277,4 +446,31 @@ const s = StyleSheet.create({
   empAvatarText:{ color: '#fff', fontWeight: '700', fontSize: 16 },
   empName:      { fontSize: 15, fontWeight: '600', color: COLORS.text },
   empDesig:     { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
+});
+
+const st = StyleSheet.create({
+  stageRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  stageBtn:    { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                 borderWidth: 1.5, borderColor: COLORS.border },
+  stageBtnInactive: { backgroundColor: COLORS.background, borderColor: COLORS.border },
+  stageBtnText:{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: COLORS.textMuted },
+  arrow:         { color: COLORS.border, fontSize: 16, marginHorizontal: 2 },
+  waitingRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,
+                   backgroundColor: '#fafafa', borderRadius: 10, padding: 10,
+                   borderWidth: 1, borderColor: COLORS.border },
+  waitingBadge:  { backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  waitingBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
+  waitingTimer:  { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: '#b45309',
+                   backgroundColor: '#fde68a', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  waitingHint:   { fontSize: 12, color: COLORS.textMuted, flex: 1 },
+  waitingBtn:    { marginLeft: 'auto', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  markWaitingBtn:{ backgroundColor: '#fef3c7' },
+  callInBtn:     { backgroundColor: '#d1fae5' },
+  waitingBtnText:{ fontSize: 12, fontWeight: '700', color: '#065f46' },
+  logBox:        { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 10, gap: 6 },
+  logRow:      { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  logDot:      { width: 7, height: 7, borderRadius: 4 },
+  logName:     { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: COLORS.text },
+  logTime:     { fontSize: 11, color: COLORS.textMuted },
+  logBy:       { fontSize: 11, color: COLORS.textMuted },
 });

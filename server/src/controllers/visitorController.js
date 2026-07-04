@@ -4,14 +4,27 @@ const { sendVisitNotification, sendCheckInConfirmation } = require('../services/
 const { localDateToUtcRange } = require('../utils/tz');
 const { cacheGet, cacheSet } = require('../config/redis');
 
+const { promoteNextReady } = require('./visitController');
+
 function sendExpoPush({ token, title, body, data }) {
   const payload = JSON.stringify({ to: token, title, body, data: data || {}, sound: 'default' });
   const req = https.request({
     hostname: 'exp.host',
     path: '/--/api/v2/push/send',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+    },
+  }, res => {
+    let raw = '';
+    res.on('data', chunk => { raw += chunk; });
+    res.on('end', () => {
+      if (res.statusCode !== 200) console.error('[ExpoPush] HTTP', res.statusCode, raw);
+    });
   });
+  req.on('error', err => console.error('[ExpoPush] Error:', err.message));
   req.write(payload);
   req.end();
 }
@@ -283,6 +296,24 @@ async function registerVisit(req, res) {
     );
     const visitId = visitResult.insertId;
 
+    // Auto-assign default stage if configured
+    const [[defaultStage]] = await conn.query(
+      'SELECT id, name, color, employee_id FROM visit_stages WHERE company_id = ? AND is_default = 1 LIMIT 1',
+      [company.id]
+    );
+    if (defaultStage) {
+      const stgFields = ['current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?'];
+      const stgValues = [defaultStage.id, defaultStage.name, defaultStage.color];
+      if (defaultStage.employee_id) { stgFields.push('employee_id = ?'); stgValues.push(defaultStage.employee_id); }
+      stgValues.push(visitId);
+      await conn.query(`UPDATE visits SET ${stgFields.join(', ')} WHERE id = ?`, stgValues);
+      await conn.query(
+        `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
+         VALUES (?, ?, ?, ?, NULL, 'Auto')`,
+        [visitId, defaultStage.id, defaultStage.name, defaultStage.color]
+      );
+    }
+
     // Store custom field values (visitor-submitted) and pre-create rows for hidden fields
     if (resolvedServiceId) {
       const [allFields] = await conn.query(
@@ -322,6 +353,9 @@ async function registerVisit(req, res) {
     }
 
     await conn.commit();
+
+    // Promote next-ready for this employee (non-blocking)
+    promoteNextReady(employee.id, company.id, company.timezone || 'UTC');
 
     // Send WhatsApp + push notification outside transaction
     const [[visit]] = await pool.query('SELECT * FROM visits WHERE id = ?', [visitId]);

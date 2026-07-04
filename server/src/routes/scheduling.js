@@ -9,6 +9,7 @@ router.post('/public/:slug/book',            ctrl.createBooking);
 router.get('/public/booking/:ref',           ctrl.getBookingStatus);
 
 // ── Admin routes ─────────────────────────────────────────────────────────────
+router.get('/my-schedule',   authenticate, requireRole('company_user'),                  ctrl.mySchedule);
 router.get('/bookings',      authenticate, requireRole('company_admin', 'company_user'), ctrl.listBookings);
 router.put('/bookings/:id',  authenticate, requireRole('company_admin', 'company_user'), ctrl.updateBookingStatus);
 router.get('/availability',  authenticate, requireRole('company_admin'),                 ctrl.getAvailability);

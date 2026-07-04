@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useNow, fmtElapsed } from '../../hooks/useNow';
 import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 import { useAuth } from '../../context/AuthContext';
 import { todayInTz, formatInTz } from '../../utils/tz';
@@ -49,6 +50,11 @@ export default function MyVisits() {
   const [modalSaving, setModalSaving] = useState(false);
   const [historyVisitorId, setHistoryVisitorId] = useState(null);
 
+  // Stages
+  const [stages,        setStages]        = useState([]);
+  const [advancingStage, setAdvancingStage] = useState(false);
+  const now = useNow(30_000);
+
   // Photos
   const [photos,         setPhotos]         = useState([]);
   const [photosLoading,  setPhotosLoading]  = useState(false);
@@ -73,14 +79,15 @@ export default function MyVisits() {
   const doPollRef   = useRef(null);
 
   const today = todayInTz(companyTz);
-  const [filterDate, setFilterDate]       = useState(today);
-  const [filterStatus, setFilterStatus]   = useState('pending');
-  const [filterService, setFilterService] = useState('');
-  const [sortOrder, setSortOrder]         = useState('asc'); // pending defaults to asc
+  const [filterDate,     setFilterDate]     = useState(today);
+  const [filterStatuses, setFilterStatuses] = useState(['pending', 'approved']);
+  const [filterService,  setFilterService]  = useState('');
+  const [sortOrder,      setSortOrder]      = useState('asc');
 
-  // Load assigned services + hidden-field metadata once on mount
+  // Load assigned services + hidden-field metadata + stages once on mount
   useEffect(() => {
     api.get('/services/hidden-fields').then(({ data }) => setHiddenFields(data)).catch(() => {});
+    api.get('/stages').then(({ data }) => setStages(Array.isArray(data) ? data : [])).catch(() => {});
 
     api.get('/services/my-services').then(({ data }) => {
       setServices(data);
@@ -109,9 +116,9 @@ export default function MyVisits() {
 
   function buildParams(order) {
     const params = {};
-    if (filterDate)    params.date       = filterDate;
-    if (filterStatus)  params.status     = filterStatus;
-    if (filterService) params.service_id = filterService;
+    if (filterDate)                   params.date       = filterDate;
+    if (filterStatuses.length > 0)    params.status     = filterStatuses.join(',');
+    if (filterService)                params.service_id = filterService;
     params.order = order ?? sortOrder;
     return params;
   }
@@ -147,10 +154,10 @@ export default function MyVisits() {
   doPollRef.current = silentLoad;
 
   useEffect(() => {
-    const defaultOrder = filterStatus === 'pending' ? 'asc' : 'desc';
+    const defaultOrder = filterStatuses.includes('pending') ? 'asc' : 'desc';
     setSortOrder(defaultOrder);
     load(defaultOrder);
-  }, [filterDate, filterStatus, filterService]);
+  }, [filterDate, filterStatuses, filterService]);
 
   // Single long-lived interval; always calls latest silentLoad via ref
   useEffect(() => {
@@ -215,16 +222,60 @@ export default function MyVisits() {
   }, [filtered, gridHiddenCols]);
 
   // ── Status update ─────────────────────────────────────────────────────────
-  async function updateStatus(visitId, status, e) {
+  async function updateStatus(visitId, status, e, force = false) {
     e?.stopPropagation();
+    if (status === 'completed' && !window.confirm('Mark this visit as completed?')) return;
+    if (status === 'approved'  && !window.confirm('Approve this visit?')) return;
     try {
-      await api.put(`/visits/${visitId}/status`, { status });
+      const { data } = await api.put(`/visits/${visitId}/status`, { status, force });
+      if (data?.queue_warning) {
+        if (window.confirm(`${data.message}\n\nApprove anyway?`)) {
+          updateStatus(visitId, status, e, true);
+        }
+        return;
+      }
       toast.success(`Marked as ${status}`);
       setVisits(vs => vs.map(v => v.id === visitId ? { ...v, status } : v));
       if (detail?.id === visitId) setDetail(d => ({ ...d, status }));
+      if (filterStatuses.length > 0 && !filterStatuses.includes(status)) {
+        setTimeout(() => load(), 800);
+      }
     } catch {
       toast.error('Failed to update status');
     }
+  }
+
+  // ── Stage advance ─────────────────────────────────────────────────────────
+  async function advanceStage(visitId, stageId) {
+    setAdvancingStage(true);
+    try {
+      const { data } = await api.put(`/visits/${visitId}/stage`, { stageId });
+      setDetail(d => d ? {
+        ...d,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        stage_logs:          data.logs,
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      } : d);
+      setVisits(vs => vs.map(v => v.id === visitId ? {
+        ...v,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      } : v));
+    } catch { toast.error('Failed to update stage'); }
+    finally { setAdvancingStage(false); }
+  }
+
+  async function handleStageWaiting(visitId, stage_status) {
+    try {
+      const { data } = await api.put(`/visits/${visitId}/stage-waiting`, { stage_status });
+      const patch = { stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since };
+      setDetail(d => d ? { ...d, ...patch } : d);
+      setVisits(vs => vs.map(v => v.id === visitId ? { ...v, ...patch } : v));
+    } catch { toast.error('Failed to update waiting status'); }
   }
 
   // ── Detail modal ──────────────────────────────────────────────────────────
@@ -233,6 +284,7 @@ export default function MyVisits() {
     setDetail(null);
     setPhotos([]);
     setLightbox(null);
+    load();
   }
 
   async function openDetail(visit) {
@@ -402,14 +454,25 @@ export default function MyVisits() {
         />
         <input type="date" className="input w-36" value={filterDate}
           onChange={e => setFilterDate(e.target.value)} />
-        <select className="input w-full sm:w-36" value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="completed">Completed</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {[
+            { value: 'pending',   label: 'Pending',     active: 'bg-yellow-500 border-yellow-500 text-white' },
+            { value: 'approved',  label: 'Approved',    active: 'bg-green-500 border-green-500 text-white' },
+            { value: 'completed', label: 'Completed',   active: 'bg-blue-500 border-blue-500 text-white' },
+            { value: 'rejected',  label: 'Rejected',    active: 'bg-red-500 border-red-500 text-white' },
+          ].map(({ value, label, active }) => {
+            const on = filterStatuses.includes(value);
+            return (
+              <button key={value}
+                onClick={() => setFilterStatuses(prev =>
+                  prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
+                )}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${on ? active : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
         {services.length > 1 && (
           <select className="input w-full sm:w-44" value={filterService}
             onChange={e => setFilterService(e.target.value)}>
@@ -569,6 +632,7 @@ export default function MyVisits() {
                   {showStd('employee_name') && <th className="text-left px-4 py-3 font-semibold text-gray-600">Associate</th>}
                   {showStd('service_name') && <th className="text-left px-4 py-3 font-semibold text-gray-600">Service</th>}
                   {showStd('visit_time')   && <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Visit Time</th>}
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Status</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
                   {gridHiddenCols.map(f => (
                     <th key={f.id}
@@ -619,6 +683,24 @@ export default function MyVisits() {
                     )}
                     {showStd('service_name') && <td className="px-4 py-3 text-gray-500">{v.service_name || v.purpose || '—'}</td>}
                     {showStd('visit_time')   && <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(v.visit_time)}</td>}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_COLORS[v.status] || ''}`}>
+                          {v.status}
+                        </span>
+                        {v.current_stage_name && (
+                          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white w-fit"
+                            style={{ backgroundColor: v.current_stage_color || '#6366f1' }}>
+                            {v.current_stage_name}
+                          </span>
+                        )}
+                        {v.stage_status === 'waiting' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full w-fit animate-pulse">
+                            ⏱ Waiting{v.stage_waiting_since ? ` · ${fmtElapsed(now - new Date(v.stage_waiting_since))}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-1">
                         {v.status === 'pending' && (
@@ -776,6 +858,83 @@ export default function MyVisits() {
                   }
                 />
                 {detail.notes && <Row label="Notes" value={detail.notes} />}
+
+                {/* Stage stepper */}
+                {stages.length > 0 && (
+                  <div className="border-t pt-4">
+                    <p className="font-semibold text-gray-700 mb-3 text-sm">Stage Progress</p>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {stages.map((stage, i) => {
+                        const isCurrent = detail.current_stage_id === stage.id;
+                        const isDone = (detail.stage_logs || []).some(l => l.stage_name === stage.name);
+                        return (
+                          <span key={stage.id} className="flex items-center gap-1">
+                            <button
+                              onClick={() => advanceStage(detail.id, isCurrent ? null : stage.id)}
+                              disabled={advancingStage}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-colors disabled:opacity-50"
+                              style={isCurrent
+                                ? { backgroundColor: stage.color, borderColor: stage.color, color: '#fff' }
+                                : isDone
+                                  ? { backgroundColor: stage.color + '33', borderColor: stage.color, color: stage.color }
+                                  : { backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#6b7280' }
+                              }>
+                              {isDone && !isCurrent ? '✓ ' : ''}{stage.name}
+                            </button>
+                            {i < stages.length - 1 && <span className="text-gray-300 text-xs">›</span>}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {/* Waiting toggle */}
+                    {detail.current_stage_id && (
+                      <div className="flex items-center gap-3 my-2 p-2.5 rounded-xl bg-gray-50 border border-gray-200">
+                        {detail.stage_status === 'waiting' ? (
+                          <>
+                            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                              Waiting
+                            </span>
+                            {detail.stage_waiting_since && (
+                              <span className="text-xs font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                ⏱ {fmtElapsed(now - new Date(detail.stage_waiting_since))}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleStageWaiting(detail.id, 'in_progress')}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-semibold">
+                              Call In ▶
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-gray-400">
+                              {detail.stage_status === 'in_progress' ? '▶ In progress' : 'No waiting status'}
+                            </span>
+                            <button
+                              onClick={() => handleStageWaiting(detail.id, 'waiting')}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold">
+                              Mark Waiting
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {(detail.stage_logs || []).length > 0 && (
+                      <div className="space-y-1 border-t border-gray-100 pt-2">
+                        {(detail.stage_logs || []).map((log, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: log.color || '#6366f1' }} />
+                            <span className="font-medium text-gray-700">{log.stage_name}</span>
+                            <span>{new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            {log.entered_by_name && <span>· {log.entered_by_name}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {(detail.status === 'pending' || detail.status === 'approved') && (
                   <div className="flex gap-2 border-t pt-4">

@@ -5,6 +5,7 @@ import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 import { useAuth } from '../../context/AuthContext';
 import { exportToExcel } from '../../utils/exportExcel';
 import { formatInTz } from '../../utils/tz';
+import { useNow, fmtElapsed } from '../../hooks/useNow';
 
 const statusClass = s => ({
   pending: 'badge-pending', approved: 'badge-approved',
@@ -38,8 +39,10 @@ export default function Visits() {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [historyVisitorId, setHistoryVisitorId] = useState(null);
-  const [filters, setFilters] = useState({ status: 'pending', date: '' });
-  const [sortOrder, setSortOrder] = useState('asc'); // pending defaults to asc (queue)
+  const [filters, setFilters] = useState({ statuses: ['pending', 'approved'], date: '' });
+  const [statusDropOpen, setStatusDropOpen] = useState(false);
+  const statusDropRef = useRef(null);
+  const [sortOrder, setSortOrder] = useState('asc');
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editEmp, setEditEmp] = useState(false);
@@ -48,6 +51,16 @@ export default function Visits() {
   const [savingEmp, setSavingEmp] = useState(false);
 
   const [hiddenFields, setHiddenFields] = useState([]);
+
+  // Stage tracking
+  const [stages,       setStages]       = useState([]);
+  const [advancingStage, setAdvancingStage] = useState(false);
+
+  // Queue-jump confirmation
+  const [jumpWarning, setJumpWarning] = useState(null); // { visitId, message, aheadVisitor }
+
+  // Live clock for wait timers
+  const now = useNow(30_000);
 
   // Photos
   const [photos, setPhotos]           = useState([]);
@@ -64,6 +77,7 @@ export default function Visits() {
 
   useEffect(() => {
     function handler(e) {
+      if (statusDropRef.current && !statusDropRef.current.contains(e.target)) setStatusDropOpen(false);
       if (colPickerRef.current && !colPickerRef.current.contains(e.target)) setColPickerOpen(false);
     }
     document.addEventListener('mousedown', handler);
@@ -123,6 +137,10 @@ export default function Visits() {
   const totalVisible = visibleCols.size + (visibleHiddenCols?.size ?? hiddenFields.length);
   const hiddenCount = totalHidden - totalVisible;
 
+  useEffect(() => {
+    api.get('/stages').then(({ data }) => setStages(data)).catch(() => {});
+  }, []);
+
   function closeDetail() {
     setSelected(null);
     setEditEmp(false);
@@ -173,6 +191,43 @@ export default function Visits() {
     } catch { toast.error('Delete failed'); }
   }
 
+  async function handleAdvanceStage(stageId) {
+    if (!selected) return;
+    setAdvancingStage(true);
+    try {
+      const { data } = await api.put(`/visits/${selected.id}/stage`, { stageId });
+      setSelected(prev => ({
+        ...prev,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        stage_logs:          data.logs,
+        ...(data.is_final ? { status: 'completed' } : {}),
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      }));
+      // Reflect status in list
+      setVisits(prev => prev.map(v => v.id === selected.id ? {
+        ...v,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        ...(data.is_final ? { status: 'completed' } : {}),
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      } : v));
+      toast.success(`Stage: ${data.current_stage_name}`);
+    } catch { toast.error('Failed to update stage'); }
+    finally { setAdvancingStage(false); }
+  }
+
+  async function handleStageWaiting(visitId, stage_status) {
+    try {
+      const { data } = await api.put(`/visits/${visitId}/stage-waiting`, { stage_status });
+      const patch = { stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since };
+      setSelected(prev => prev ? { ...prev, ...patch } : prev);
+      setVisits(prev => prev.map(v => v.id === visitId ? { ...v, ...patch } : v));
+    } catch { toast.error('Failed to update waiting status'); }
+  }
+
   async function startEditEmp() {
     const params = selected.service_id ? `?service_id=${selected.service_id}` : '';
     const { data } = await api.get(`/visits/employees${params}`);
@@ -204,16 +259,25 @@ export default function Visits() {
   async function load(order) {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.status) params.set('status', filters.status);
-    if (filters.date)   params.set('date', filters.date);
+    if (filters.statuses.length > 0) params.set('status', filters.statuses.join(','));
+    if (filters.date) params.set('date', filters.date);
     params.set('order', order ?? sortOrder);
     const { data } = await api.get(`/visits?${params}`);
     setVisits(data);
     setLoading(false);
   }
 
+  function toggleStatus(s) {
+    setFilters(f => {
+      const next = f.statuses.includes(s)
+        ? f.statuses.filter(x => x !== s)
+        : [...f.statuses, s];
+      return { ...f, statuses: next };
+    });
+  }
+
   useEffect(() => {
-    const defaultOrder = filters.status === 'pending' ? 'asc' : 'desc';
+    const defaultOrder = filters.statuses.includes('pending') ? 'asc' : 'desc';
     setSortOrder(defaultOrder);
     load(defaultOrder);
   }, [filters]);
@@ -224,11 +288,18 @@ export default function Visits() {
     return () => clearInterval(t);
   }, [filters, sortOrder]);
 
-  async function updateStatus(id, status) {
+  async function updateStatus(id, status, force = false) {
+    if (status === 'completed' && !window.confirm('Mark this visit as completed?')) return;
+    if (status === 'approved'  && !window.confirm('Approve this visit?')) return;
     try {
-      await api.put(`/visits/${id}/status`, { status });
+      const { data } = await api.put(`/visits/${id}/status`, { status, force });
+      if (data.queue_warning) {
+        setJumpWarning({ visitId: id, status, message: data.message, aheadVisitor: data.ahead_visitor });
+        return;
+      }
       toast.success('Status updated');
-      load();
+      setVisits(prev => prev.map(v => v.id === id ? { ...v, status, is_ready: 0 } : v));
+      if (selected?.id === id) setSelected(prev => ({ ...prev, status, is_ready: 0 }));
       closeDetail();
     } catch { toast.error('Failed'); }
   }
@@ -288,13 +359,55 @@ export default function Visits() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select className="input w-40" value={filters.status}
-          onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
-          <option value="">All Status</option>
-          {['pending','approved','rejected','completed'].map(s => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
-          ))}
-        </select>
+        {/* Multi-select status dropdown */}
+        <div className="relative" ref={statusDropRef}>
+          <button
+            type="button"
+            onClick={() => setStatusDropOpen(o => !o)}
+            className={`input w-44 text-left flex items-center justify-between gap-2 cursor-pointer ${statusDropOpen ? 'ring-2 ring-primary-400' : ''}`}
+          >
+            <span className="truncate text-sm text-gray-700">
+              {filters.statuses.length === 0
+                ? 'All Status'
+                : filters.statuses.length === 4
+                ? 'All Status'
+                : filters.statuses.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}
+            </span>
+            <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {statusDropOpen && (
+            <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-30 p-3 w-44">
+              {[
+                { value: 'pending',   label: 'Pending',   color: 'text-yellow-700' },
+                { value: 'approved',  label: 'Approved',  color: 'text-green-700' },
+                { value: 'completed', label: 'Completed', color: 'text-blue-700' },
+                { value: 'rejected',  label: 'Rejected',  color: 'text-red-700' },
+              ].map(({ value, label, color }) => (
+                <label key={value} className="flex items-center gap-2.5 py-1.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-primary-600 rounded"
+                    checked={filters.statuses.includes(value)}
+                    onChange={() => toggleStatus(value)}
+                  />
+                  <span className={`text-sm font-medium ${color}`}>{label}</span>
+                </label>
+              ))}
+              <div className="border-t mt-2 pt-2 flex gap-3">
+                <button className="text-xs text-primary-600 hover:underline"
+                  onClick={() => setFilters(f => ({ ...f, statuses: ['pending','approved','completed','rejected'] }))}>
+                  All
+                </button>
+                <button className="text-xs text-gray-400 hover:underline"
+                  onClick={() => setFilters(f => ({ ...f, statuses: [] }))}>
+                  None
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <input
           type="date" className="input w-44"
           value={filters.date}
@@ -391,10 +504,37 @@ export default function Visits() {
                 onClick={() => openDetail(v)}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{v.visitor_name}</p>
-                    <p className="text-sm text-gray-500">{v.mobile}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-900 truncate">{v.visitor_name}</p>
+                      {v.is_ready === 1 && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />READY
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <p className="text-sm text-gray-500">{v.mobile}</p>
+                      {v.status === 'pending' && v.visit_time && (
+                        <span className="text-xs text-amber-600 font-medium">
+                          ⏱ {fmtElapsed(now - new Date(v.visit_time))}
+                        </span>
+                      )}
+                      {v.status === 'approved' && v.approved_at && (
+                        <span className="text-xs text-blue-600 font-medium">
+                          ⚡ {fmtElapsed(now - new Date(v.approved_at))}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className={`shrink-0 badge-${v.status}`}>{v.status}</span>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <span className={`badge-${v.status}`}>{v.status}</span>
+                    {v.current_stage_name && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white"
+                        style={{ backgroundColor: v.current_stage_color || '#6366f1' }}>
+                        {v.current_stage_name}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {v.ref_number && <p className={`text-xs font-mono mt-1 font-semibold ${v.ref_number?.startsWith('BK-') ? 'text-orange-600' : 'text-primary-600'}`}>{v.ref_number}</p>}
                 <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">
@@ -438,6 +578,7 @@ export default function Visits() {
                   {show('employee_name') && <th className="px-5 py-3 text-left font-medium text-gray-500">Associate</th>}
                   {show('service_name') && <th className="px-5 py-3 text-left font-medium text-gray-500">Service</th>}
                   {show('visit_time')   && <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">Visit Time</th>}
+                  <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">Status</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">Actions</th>
                   {gridHiddenCols.map(f => (
                     <th key={f.id} className="px-3 py-3 text-left font-medium text-amber-700 bg-amber-50 border-l border-amber-100 leading-tight w-24">
@@ -464,6 +605,22 @@ export default function Visits() {
                     {show('visit_time')   && <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
                       {formatInTz(v.visit_time, companyTz, { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', year: undefined })}
                     </td>}
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span className={`badge ${statusClass(v.status)}`}>{v.status}</span>
+                        {v.current_stage_name && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white w-fit"
+                            style={{ backgroundColor: v.current_stage_color || '#6366f1' }}>
+                            {v.current_stage_name}
+                          </span>
+                        )}
+                        {v.stage_status === 'waiting' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full w-fit animate-pulse">
+                            ⏱ Waiting{v.stage_waiting_since ? ` · ${fmtElapsed(now - new Date(v.stage_waiting_since))}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-5 py-3 flex gap-2 flex-wrap items-center" onClick={e => e.stopPropagation()}>
                       {v.status === 'pending' && <>
                         <button onClick={() => updateStatus(v.id,'approved')}
@@ -662,6 +819,92 @@ export default function Visits() {
                   </div>
                 )}
 
+                {/* Stage tracker */}
+                {stages.length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stage Progress</p>
+
+                    {/* Stepper */}
+                    <div className="flex items-center gap-1 flex-wrap mb-3">
+                      {stages.map((st, i) => {
+                        const isCurrent = selected.current_stage_id === st.id;
+                        const logs = selected.stage_logs || [];
+                        const isDone = logs.some(l => l.stage_name === st.name);
+                        return (
+                          <span key={st.id} className="flex items-center gap-1">
+                            <button
+                              disabled={advancingStage}
+                              onClick={() => handleAdvanceStage(isCurrent ? null : st.id)}
+                              title={isCurrent ? 'Click to clear' : `Move to "${st.name}"`}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
+                                isCurrent
+                                  ? 'text-white shadow-md scale-105'
+                                  : isDone
+                                  ? 'opacity-60 text-white'
+                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                              } disabled:cursor-not-allowed`}
+                              style={isCurrent || isDone ? { backgroundColor: st.color, borderColor: st.color } : {}}>
+                              {isDone && !isCurrent ? '✓ ' : ''}{st.name}
+                              {st.is_final && ' 🏁'}
+                            </button>
+                            {i < stages.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {/* Waiting toggle — only shown when a stage is active */}
+                    {selected.current_stage_id && (
+                      <div className="flex items-center gap-3 mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-200">
+                        {selected.stage_status === 'waiting' ? (
+                          <>
+                            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                              Waiting
+                            </span>
+                            {selected.stage_waiting_since && (
+                              <span className="text-xs font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                ⏱ {fmtElapsed(now - new Date(selected.stage_waiting_since))}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleStageWaiting(selected.id, 'in_progress')}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-semibold">
+                              Call In ▶
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-gray-400">
+                              {selected.stage_status === 'in_progress' ? '▶ In progress' : 'No waiting status'}
+                            </span>
+                            <button
+                              onClick={() => handleStageWaiting(selected.id, 'waiting')}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold">
+                              Mark Waiting
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Stage history log */}
+                    {(selected.stage_logs || []).length > 0 && (
+                      <div className="space-y-1">
+                        {(selected.stage_logs || []).map((log, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: log.color || '#6366f1' }} />
+                            <span className="font-medium text-gray-700">{log.stage_name}</span>
+                            <span>·</span>
+                            <span>{new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                            {log.entered_by_name && <><span>·</span><span>{log.entered_by_name}</span></>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Photos section */}
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex items-center justify-between mb-2">
@@ -716,6 +959,38 @@ export default function Visits() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Queue-jump confirmation dialog */}
+      {jumpWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="text-3xl mb-3 text-center">⚠️</div>
+            <h3 className="text-base font-bold text-gray-900 text-center mb-2">Queue Order Warning</h3>
+            <p className="text-sm text-gray-600 text-center mb-1">
+              <span className="font-semibold text-amber-700">{jumpWarning.aheadVisitor}</span> is ahead in the queue.
+            </p>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Approving this visitor will skip them. Are you sure?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setJumpWarning(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const { visitId, status } = jumpWarning;
+                  setJumpWarning(null);
+                  updateStatus(visitId, status, true);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold">
+                Skip &amp; Approve
+              </button>
+            </div>
           </div>
         </div>
       )}

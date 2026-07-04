@@ -84,6 +84,16 @@ function fmtVisitTime(utcStr, tz) {
   });
 }
 
+function fmtWaitTimer(utcStr) {
+  if (!utcStr) return null;
+  const ms = Date.now() - new Date(utcStr).getTime();
+  if (ms < 0) return '0m';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60 ? (m % 60) + 'm' : ''}`.trim();
+}
+
 function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
   const location = serving[0]?.employee_location || waiting[0]?.employee_location || null;
   return (
@@ -103,14 +113,32 @@ function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
           <div className="rounded-lg border border-dashed border-gray-800 py-2 text-center text-gray-700 text-xs">—</div>
         ) : (
           <div className="space-y-1">
-            {serving.map(v => (
-              <div key={v.id} className="rounded-lg border border-green-700/60 bg-green-950/50 px-2.5 py-2">
-                <p className="text-sm font-bold text-white truncate leading-tight">{v.visitor_name}</p>
-                <p className="text-green-400 text-xs truncate mt-0.5">{v.employee_name}
-                  {v.designation ? <span className="text-green-700"> · {v.designation}</span> : null}
-                </p>
-              </div>
-            ))}
+            {serving.map(v => {
+              const waitTimer = v.stage_status === 'waiting' ? fmtWaitTimer(v.stage_waiting_since) : null;
+              return (
+                <div key={v.id} className={`rounded-lg border px-2.5 py-2 ${v.stage_status === 'waiting' ? 'border-amber-600/60 bg-amber-950/40' : 'border-green-700/60 bg-green-950/50'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-bold text-white truncate leading-tight flex-1">{v.visitor_name}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {v.stage_status === 'waiting' && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white animate-pulse">
+                          WAITING{waitTimer ? ` ${waitTimer}` : ''}
+                        </span>
+                      )}
+                      {v.current_stage_name && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: v.current_stage_color || '#6366f1' }}>
+                          {v.current_stage_name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className={`text-xs truncate mt-0.5 ${v.stage_status === 'waiting' ? 'text-amber-400' : 'text-green-400'}`}>{v.employee_name}
+                    {v.designation ? <span className="opacity-60"> · {v.designation}</span> : null}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -135,11 +163,17 @@ function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
               const wait = fmtWait(v.est_wait_minutes);
               const isNext = wait?.label === 'Next';
               const bookedAt = fmtVisitTime(v.visit_time, tz);
+              const isReady = v.is_ready === 1;
               return (
-                <div key={v.id} className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-2 py-1.5">
-                  <span className="text-lg font-black text-yellow-400 w-6 text-center shrink-0 leading-none">{i + 1}</span>
+                <div key={v.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${isReady ? 'bg-green-950/50 border border-green-700/40' : 'bg-gray-800/60'}`}>
+                  <span className={`text-lg font-black w-6 text-center shrink-0 leading-none ${isReady ? 'text-green-400' : 'text-yellow-400'}`}>{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-200 truncate">{v.visitor_name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium text-gray-200 truncate">{v.visitor_name}</p>
+                      {isReady && (
+                        <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-green-500 text-white animate-pulse">READY</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {v.ref_number && <p className="text-[10px] text-gray-500 font-mono leading-tight">#{v.ref_number}</p>}
                       {bookedAt && <p className="text-[10px] text-gray-500 font-mono leading-tight">🕐 {bookedAt}</p>}
@@ -147,10 +181,10 @@ function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
                   </div>
                   {wait !== null && (
                     <div className="shrink-0 text-right">
-                      <p className={`text-[10px] font-bold leading-tight ${isNext ? 'text-green-400' : 'text-yellow-400'}`}>
-                        {isNext ? 'Next' : wait.label}
+                      <p className={`text-[10px] font-bold leading-tight ${isNext || isReady ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {isReady ? 'Ready' : isNext ? 'Next' : wait.label}
                       </p>
-                      {wait.exact && (
+                      {!isReady && wait.exact && (
                         <p className="text-[9px] text-gray-500 font-mono leading-tight">~{wait.exact}</p>
                       )}
                     </div>
@@ -373,6 +407,14 @@ export default function DisplayBoard() {
   const visibleUpcoming = filteredVisits.length === 0 && visits.length > 0 ? upcoming : filteredUpcoming;
 
   const serviceMap = new Map();
+  // Pre-seed all configured services so empty-queue columns still appear
+  const configuredServices = board.services || [];
+  const effectiveServices = activeFilter
+    ? configuredServices.filter(s => effectiveFilter.has(s))
+    : configuredServices;
+  effectiveServices.forEach(name => {
+    serviceMap.set(name, { serving: [], waiting: [], upcoming: [] });
+  });
   visible.forEach(v => {
     const key = v.service_name || v.purpose || 'General';
     if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [] });

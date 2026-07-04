@@ -410,7 +410,38 @@ async function saveAvailability(req, res) {
   }
 }
 
+// ── ASSOCIATE: fetch own scheduled visits for a given month ─────────────────
+async function mySchedule(req, res) {
+  const { year, month } = req.query; // month = 1-12
+  const empId = req.user.employee_id;
+  if (!empId) return res.json([]);
+
+  const y = parseInt(year)  || new Date().getFullYear();
+  const m = parseInt(month) || (new Date().getMonth() + 1);
+  const dateFrom = `${y}-${String(m).padStart(2, '0')}-01`;
+  const dateTo   = new Date(y, m, 0).toISOString().slice(0, 10); // last day of month
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT sv.id, sv.booking_ref, sv.status,
+              sv.visitor_name, sv.visitor_mobile, sv.visitor_email,
+              sv.scheduled_date, sv.scheduled_time,
+              sv.service_name, sv.purpose, sv.admin_notes, sv.created_at
+       FROM scheduled_visits sv
+       WHERE sv.employee_id = ? AND sv.company_id = ?
+         AND sv.scheduled_date BETWEEN ? AND ?
+       ORDER BY sv.scheduled_date ASC, sv.scheduled_time ASC`,
+      [empId, req.user.company_id, dateFrom, dateTo]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getBookingInfo, getAvailableSlots, createBooking, getBookingStatus,
   listBookings, updateBookingStatus, getAvailability, saveAvailability,
+  mySchedule,
 };

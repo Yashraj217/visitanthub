@@ -8,6 +8,7 @@ import * as SecureStore          from 'expo-secure-store';
 import { Ionicons }              from '@expo/vector-icons';
 import { useAuth }               from '../context/AuthContext';
 import { COLORS }                from '../constants/colors';
+import { FONTS }                 from '../constants/fonts';
 import api                       from '../services/api';
 import { registerForPushNotifications } from '../services/notifications';
 
@@ -224,39 +225,39 @@ const s = StyleSheet.create({
   scroll:        { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoBox:       { alignItems: 'center', marginBottom: 32 },
   logoIcon:      { width: 84, height: 84, borderRadius: 20, marginBottom: 12 },
-  appName:       { fontSize: 26, fontWeight: '700', color: COLORS.text },
-  tagline:       { fontSize: 14, color: COLORS.textMuted, marginTop: 4 },
+  appName:       { fontSize: 26, fontFamily: FONTS.bold, color: COLORS.text },
+  tagline:       { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textMuted, marginTop: 4 },
   card:          { backgroundColor: COLORS.card, borderRadius: 16, padding: 24,
                    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12,
                    shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  cardTitle:     { fontSize: 20, fontWeight: '700', color: COLORS.text, marginBottom: 20 },
-  label:         { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 6 },
+  cardTitle:     { fontSize: 20, fontFamily: FONTS.bold, color: COLORS.text, marginBottom: 20 },
+  label:         { fontSize: 13, fontFamily: FONTS.semiBold, color: COLORS.text, marginBottom: 6 },
   input:         { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
                    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
-                   color: COLORS.text, backgroundColor: '#fafafa', marginBottom: 14 },
+                   fontFamily: FONTS.regular, color: COLORS.text, backgroundColor: '#fafafa', marginBottom: 14 },
   passwordRow:   { flexDirection: 'row', alignItems: 'center', borderWidth: 1,
                    borderColor: COLORS.border, borderRadius: 10, backgroundColor: '#fafafa',
                    marginBottom: 14 },
   passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12,
-                   fontSize: 15, color: COLORS.text },
+                   fontSize: 15, fontFamily: FONTS.regular, color: COLORS.text },
   eyeBtn:        { paddingHorizontal: 12, paddingVertical: 12 },
   forgotBtn:     { alignSelf: 'flex-end', marginBottom: 20 },
-  forgotText:    { fontSize: 13, color: COLORS.primary, fontWeight: '500' },
+  forgotText:    { fontSize: 13, color: COLORS.primary, fontFamily: FONTS.semiBold },
   btn:           { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 14,
                    alignItems: 'center' },
-  btnText:       { color: '#fff', fontSize: 16, fontWeight: '700' },
+  btnText:       { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
   biometricBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                    gap: 8, marginTop: 16, paddingVertical: 12, borderRadius: 10,
                    borderWidth: 1.5, borderColor: COLORS.primary, backgroundColor: '#f5f5ff' },
-  biometricText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' },
-  footer:        { textAlign: 'center', color: COLORS.textMuted, fontSize: 12, marginTop: 32 },
+  biometricText: { color: COLORS.primary, fontSize: 15, fontFamily: FONTS.semiBold },
+  footer:        { textAlign: 'center', color: COLORS.textMuted, fontSize: 12, fontFamily: FONTS.regular, marginTop: 32 },
 
   // Visitor check-in
   divider:       { flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 16 },
   divLine:       { flex: 1, height: 1, backgroundColor: COLORS.border },
-  divText:       { marginHorizontal: 12, color: COLORS.textMuted, fontSize: 13 },
+  divText:       { marginHorizontal: 12, color: COLORS.textMuted, fontSize: 13, fontFamily: FONTS.regular },
   visitorBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
                    backgroundColor: COLORS.card, borderWidth: 1.5, borderColor: COLORS.primary,
                    borderRadius: 12, paddingVertical: 14, paddingHorizontal: 20 },
-  visitorBtnText:{ flex: 1, textAlign: 'center', color: COLORS.primary, fontSize: 15, fontWeight: '700' },
+  visitorBtnText:{ flex: 1, textAlign: 'center', color: COLORS.primary, fontSize: 15, fontFamily: FONTS.bold },
 });

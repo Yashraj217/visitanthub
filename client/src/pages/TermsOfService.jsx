@@ -110,7 +110,30 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="7. Intellectual Property">
+        <Section title="7. WhatsApp Notifications">
+          <p>
+            VisitantHub supports WhatsApp-based notifications for visitor check-ins, appointment
+            confirmations, and visit approvals. However, WhatsApp messaging is <strong>not included</strong> in
+            any VisitantHub subscription plan and is <strong>not free</strong>.
+          </p>
+          <p>
+            The setup, configuration, and ongoing costs of WhatsApp Business API access are the sole
+            responsibility of the client. This includes, but is not limited to:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Creating and maintaining a Meta (Facebook) Business Manager account</li>
+            <li>Registering and verifying a WhatsApp Business API phone number</li>
+            <li>Getting message templates approved by Meta</li>
+            <li>Paying any charges levied by Meta for WhatsApp message delivery</li>
+          </ul>
+          <p>
+            Sonnet Infotech provides the technical integration within the platform but is not responsible
+            for WhatsApp API availability, message delivery failures, template rejections, or any costs
+            incurred through Meta's WhatsApp Business Platform.
+          </p>
+        </Section>
+
+        <Section title="8. Intellectual Property">
           <p>
             All intellectual property rights in VisitantHub — including the software, design, trademarks,
             and content — are owned by Sonnet Infotech. These Terms do not grant you any right to use our
@@ -123,7 +146,7 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="8. Availability & Uptime">
+        <Section title="9. Availability & Uptime">
           <p>
             We strive to keep VisitantHub available at all times, but we do not guarantee uninterrupted
             or error-free access. We may take the Service offline for maintenance, upgrades, or reasons
@@ -135,7 +158,7 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="9. Limitation of Liability">
+        <Section title="10. Limitation of Liability">
           <p>
             To the fullest extent permitted by law, Sonnet Infotech shall not be liable for any indirect,
             incidental, special, consequential, or punitive damages, including loss of profits, data, or
@@ -147,7 +170,7 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="10. Termination">
+        <Section title="11. Termination">
           <p>
             You may terminate your account at any time by contacting us. Upon termination, your data will
             be deleted within 30 days as described in our Privacy Policy.
@@ -158,14 +181,14 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="11. Governing Law">
+        <Section title="12. Governing Law">
           <p>
             These Terms are governed by the laws of India. Any disputes arising from these Terms or your
             use of the Service shall be subject to the exclusive jurisdiction of the courts in India.
           </p>
         </Section>
 
-        <Section title="12. Changes to These Terms">
+        <Section title="13. Changes to These Terms">
           <p>
             We may revise these Terms from time to time. The "Last updated" date at the top of this page
             reflects the most recent revision. We will notify registered users of material changes by email.
@@ -174,7 +197,7 @@ export default function TermsOfService() {
           </p>
         </Section>
 
-        <Section title="13. Contact Us">
+        <Section title="14. Contact Us">
           <p>For questions about these Terms, please contact:</p>
           <div className="bg-gray-50 rounded-xl p-5 mt-2 text-sm space-y-1">
             <p className="font-semibold text-gray-900">Sonnet Infotech</p>

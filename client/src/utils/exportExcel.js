@@ -1,6 +1,32 @@
 import * as XLSX from 'xlsx';
 
 /**
+ * Export an array of row objects to a CSV file.
+ */
+export function exportToCSV(filename, columns, rows) {
+  const escape = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = columns.map(c => escape(c.header)).join(',');
+  const body = rows.map(row =>
+    columns.map(c => {
+      const val = typeof c.value === 'function' ? c.value(row) : row[c.key];
+      return escape(val ?? '');
+    }).join(',')
+  );
+  const csv  = [header, ...body].join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Export an array of row objects to an Excel file.
  * @param {string} filename  - e.g. 'visits-2026-06-16'
  * @param {string} sheetName - e.g. 'Visits'

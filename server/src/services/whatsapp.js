@@ -8,19 +8,19 @@
  * Required Meta templates (create in Meta Business Manager → WhatsApp Manager → Message Templates):
  *
  * Template: visit_arrival_notification  (Category: Utility)
- *   Body: Hello {{1}}, {{2}} ({{3}}) would like to meet you.\nVisit Time: {{4}}\nPurpose: {{5}}\n\nPlease be ready at your workstation.\n\n— {{6}} Visitor Management
- *   Variables: 1=associate name, 2=visitor name, 3=visitor mobile, 4=visit time, 5=purpose, 6=company name
+ *   Body: Hello {{1}}, {{2}} ({{3}}) would like to meet you.\nVisit Time: {{4}}\nPurpose: {{5}}\n\nPlease be ready at your workstation.
+ *   Variables: 1=associate name, 2=visitor name, 3=visitor mobile, 4=visit time, 5=purpose
  *
  * Template: visit_approved_notification  (Category: Utility)
- *   Body: Hello {{1}}, Your visit has been approved!\n\nYou may now proceed to meet {{2}} ({{3}}).\nLocation: {{4}}\nService: {{5}}\nRef: {{6}}\n\n— {{7}}
- *   Variables: 1=visitor name, 2=associate name, 3=designation, 4=location, 5=service, 6=ref, 7=company name
+ *   Body: Hello {{1}}, Your visit has been approved!\n\nYou may now proceed to meet {{2}} ({{3}}).\nLocation: {{4}}\nService: {{5}}\nRef: {{6}}
+ *   Variables: 1=visitor name, 2=associate name, 3=designation, 4=location, 5=service, 6=ref
  *
  * Template: booking_confirmation  (Category: Utility)
- *   Body: Hello {{1}}, your appointment has been booked!\n\nRef: {{2}}\nDate: {{3}}\nTime: {{4}}\nAssociate: {{5}}\nService: {{6}}\n\nYour booking is pending approval. You will be notified once confirmed.\n\n— {{7}}
- *   Variables: 1=visitor name, 2=booking_ref, 3=date, 4=time, 5=associate, 6=service, 7=company name
+ *   Body: Hello {{1}}, your appointment has been booked!\n\nRef: {{2}}\nDate: {{3}}\nTime: {{4}}\nAssociate: {{5}}\nService: {{6}}\n\nYour booking is pending approval. You will be notified once confirmed.
+ *   Variables: 1=visitor name, 2=booking_ref, 3=date, 4=time, 5=associate, 6=service
  *
  * Template: visitor_checkin_confirmation  (Category: Utility)
- *   Body: Hello {{1}}, you have successfully checked in at {{2}}!\n\nRef: {{3}}\nAssociate: {{4}}\nService: {{5}}\nVisitors ahead: {{6}}\n\nYou will be notified once your visit is approved.\n\n— {{2}}
+ *   Body: Hello {{1}}, you have successfully checked in at {{2}}!\n\nRef: {{3}}\nAssociate: {{4}}\nService: {{5}}\nVisitors ahead: {{6}}\n\nYou will be notified once your visit is approved.
  *   Variables: 1=visitor name, 2=company name, 3=ref_number, 4=associate name, 5=service, 6=queue ahead
  */
 
@@ -107,7 +107,6 @@ async function sendVisitNotification({ company, employee, visitor, visit }) {
         visitor.mobile,
         visitTime,
         purpose,
-        company.name,
       ],
     });
   }
@@ -152,7 +151,6 @@ async function sendApprovalNotification({ company, employee, visitor, visit }) {
         location,
         serviceName,
         ref,
-        company.name,
       ],
     });
   }
@@ -198,7 +196,6 @@ async function sendBookingConfirmation({ company, booking }) {
         timeStr,
         associate,
         service,
-        company.name,
       ],
     });
   }

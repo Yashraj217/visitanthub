@@ -3,12 +3,13 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ChangePasswordModal from '../ChangePasswordModal';
 import ImpersonationBanner from '../ImpersonationBanner';
-import api from '../../services/api';
+import { useVisitNotifications } from '../../hooks/useVisitNotifications';
 
 const navItems = [
-  { to: '/user-portal',        label: 'Dashboard', icon: '📊', exact: true },
-  { to: '/user-portal/visits', label: 'My Visits', icon: '📋', exact: true },
-  { to: '/user-portal/help',   label: 'Help',      icon: '❓', exact: true },
+  { to: '/user-portal',          label: 'Dashboard', icon: '📊', exact: true },
+  { to: '/user-portal/visits',   label: 'My Visits',  icon: '📋', exact: true, badge: true },
+  { to: '/user-portal/schedule', label: 'My Schedule',icon: '📅', exact: true },
+  { to: '/user-portal/help',     label: 'Help',       icon: '❓', exact: true },
 ];
 
 export default function UserLayout() {
@@ -17,9 +18,11 @@ export default function UserLayout() {
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const { permission, pendingCount, requestPermission } = useVisitNotifications();
+
   function handleLogout() {
     logout();
-    navigate('/login');
+    navigate('/');
   }
 
   function openHelp() {
@@ -29,6 +32,17 @@ export default function UserLayout() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <ImpersonationBanner />
+
+      {/* Notification permission banner */}
+      {permission === 'default' && (
+        <div className="shrink-0 bg-indigo-600 text-white text-sm px-4 py-2 flex items-center justify-between gap-3">
+          <span>Enable browser notifications to get alerted when a visitor arrives.</span>
+          <button onClick={requestPermission}
+            className="shrink-0 bg-white text-indigo-700 text-xs font-semibold px-3 py-1 rounded-full hover:bg-indigo-50 transition-colors">
+            Enable
+          </button>
+        </div>
+      )}
 
       {/* Mobile top bar */}
       <header className="lg:hidden flex items-center gap-3 px-4 py-3 text-white shrink-0"
@@ -40,6 +54,11 @@ export default function UserLayout() {
           </svg>
         </button>
         <span className="font-semibold text-sm truncate">{user?.company_name}</span>
+        {pendingCount > 0 && (
+          <span className="ml-auto shrink-0 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+            {pendingCount}
+          </span>
+        )}
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -79,7 +98,7 @@ export default function UserLayout() {
           </div>
 
           <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {navItems.map(({ to, label, icon, exact }) => (
+            {navItems.map(({ to, label, icon, exact, badge }) => (
               <NavLink
                 key={to} to={to} end={exact}
                 onClick={() => setSidebarOpen(false)}
@@ -91,7 +110,13 @@ export default function UserLayout() {
                   }`
                 }
               >
-                <span>{icon}</span>{label}
+                <span>{icon}</span>
+                <span className="flex-1">{label}</span>
+                {badge && pendingCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                    {pendingCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>

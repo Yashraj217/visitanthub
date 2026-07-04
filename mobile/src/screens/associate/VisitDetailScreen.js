@@ -113,11 +113,22 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
   const [dirty,      setDirty]      = useState(false);
   const savedRef = useRef({});
 
+  // Stage tracking
+  const [stages,          setStages]          = useState([]);
+  const [advancingStage,  setAdvancingStage]  = useState(false);
+  const [waitingLoading,  setWaitingLoading]  = useState(false);
+  const [nowMs,           setNowMs]           = useState(() => Date.now());
+
   // Photos
   const [photos,         setPhotos]         = useState([]);
   const [photosLoading,  setPhotosLoading]  = useState(true);
   const [uploading,      setUploading]      = useState(false);  // true = uploading, 'compressing' = compressing
   const [lightbox,       setLightbox]       = useState(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     api.get(`/visits/${visit.id}`)
@@ -130,6 +141,8 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
       })
       .catch(() => {})
       .finally(() => setFetching(false));
+
+    api.get('/stages').then(({ data }) => setStages(data)).catch(() => {});
 
     api.get(`/visits/${visit.id}/photos`)
       .then(({ data }) => setPhotos(Array.isArray(data) ? data : []))
@@ -154,14 +167,61 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
     } finally { setSaving(false); }
   }
 
-  async function changeStatus(nextStatus) {
+  async function handleAdvanceStage(stageId) {
+    setAdvancingStage(true);
+    try {
+      const { data } = await api.put(`/visits/${visit.id}/stage`, { stageId });
+      setVisit(v => ({
+        ...v,
+        current_stage_id:    data.current_stage_id,
+        current_stage_name:  data.current_stage_name,
+        current_stage_color: data.current_stage_color,
+        stage_logs:          data.logs,
+        ...(data.status_reset ? { status: data.status_reset } : {}),
+      }));
+    } catch { Alert.alert('Error', 'Failed to update stage.'); }
+    finally { setAdvancingStage(false); }
+  }
+
+  async function handleStageWaiting(stage_status) {
+    setWaitingLoading(true);
+    try {
+      const { data } = await api.put(`/visits/${visit.id}/stage-waiting`, { stage_status });
+      setVisit(v => ({ ...v, stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since }));
+    } catch { Alert.alert('Error', 'Failed to update waiting status.'); }
+    finally { setWaitingLoading(false); }
+  }
+
+  function fmtElapsedMs(since) {
+    if (!since) return '0m';
+    const ms = nowMs - new Date(since).getTime();
+    if (ms < 0) return '0m';
+    const m = Math.floor(ms / 60000);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60 ? (m % 60) + 'm' : ''}`.trim();
+  }
+
+  async function changeStatus(nextStatus, force = false) {
     Alert.alert('Update Status', `Change to "${STATUS_LABELS[nextStatus] || nextStatus}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm', onPress: async () => {
           setLoading(true);
           try {
-            await api.put(`/visits/${visit.id}/status`, { status: nextStatus });
+            const { data } = await api.put(`/visits/${visit.id}/status`, { status: nextStatus, force });
+            if (data?.queue_warning) {
+              setLoading(false);
+              Alert.alert(
+                'Someone is ahead',
+                data.message || `${data.ahead_visitor} is waiting before this visitor.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Approve Anyway', onPress: () => changeStatus(nextStatus, true) },
+                ]
+              );
+              return;
+            }
             if (nextStatus === 'completed' || nextStatus === 'rejected') {
               navigation.goBack();
             } else {
@@ -295,8 +355,6 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
             )}
           </View>
           <Row label="Phone"   value={visit.mobile} />
-          <Row label="Email"   value={visit.visitor_email} />
-          <Row label="Address" value={visit.address} />
         </View>
 
         {/* Visit Details */}
@@ -307,6 +365,91 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
           <Row label="Associate" value={visit.employee_name} />
           <Row label="Notes"     value={visit.notes} />
         </View>
+
+        {/* Stage tracker */}
+        {stages.length > 0 && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Stage Progress</Text>
+
+            {/* Stage buttons */}
+            <View style={st.stageRow}>
+              {stages.map((stage, i) => {
+                const isCurrent = visit.current_stage_id === stage.id;
+                const logs      = visit.stage_logs || [];
+                const isDone    = logs.some(l => l.stage_name === stage.name);
+                return (
+                  <View key={stage.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={[
+                        st.stageBtn,
+                        isCurrent && { backgroundColor: stage.color, borderColor: stage.color },
+                        isDone && !isCurrent && { backgroundColor: stage.color + 'aa', borderColor: stage.color },
+                        !isCurrent && !isDone && st.stageBtnInactive,
+                      ]}
+                      disabled={advancingStage}
+                      onPress={() => handleAdvanceStage(isCurrent ? null : stage.id)}
+                      activeOpacity={0.75}>
+                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' }]}>
+                        {isDone && !isCurrent ? '✓ ' : ''}{stage.name}{stage.is_final ? ' 🏁' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                    {i < stages.length - 1 && <Text style={st.arrow}>›</Text>}
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Waiting toggle — shown when a stage is active */}
+            {visit.current_stage_id && (
+              <View style={st.waitingRow}>
+                {visit.stage_status === 'waiting' ? (
+                  <>
+                    <View style={st.waitingBadge}>
+                      <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
+                    </View>
+                    {visit.stage_waiting_since && (
+                      <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
+                    )}
+                    <TouchableOpacity
+                      style={[st.waitingBtn, st.callInBtn]}
+                      onPress={() => handleStageWaiting('in_progress')}
+                      disabled={waitingLoading}>
+                      <Text style={st.waitingBtnText}>Call In ▶</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={st.waitingHint}>
+                      {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[st.waitingBtn, st.markWaitingBtn]}
+                      onPress={() => handleStageWaiting('waiting')}
+                      disabled={waitingLoading}>
+                      <Text style={[st.waitingBtnText, { color: '#92400e' }]}>Mark Waiting</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+
+            {/* Stage history */}
+            {(visit.stage_logs || []).length > 0 && (
+              <View style={st.logBox}>
+                {(visit.stage_logs || []).map((log, i) => (
+                  <View key={i} style={st.logRow}>
+                    <View style={[st.logDot, { backgroundColor: log.color || COLORS.primary }]} />
+                    <Text style={st.logName}>{log.stage_name}</Text>
+                    <Text style={st.logTime}>
+                      {new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </Text>
+                    {log.entered_by_name && <Text style={st.logBy}>· {log.entered_by_name}</Text>}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Visitor-filled fields (read-only) */}
         {visitorFields.length > 0 && (
@@ -532,4 +675,31 @@ const s = StyleSheet.create({
                       backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 14,
                       paddingVertical: 8, borderRadius: 10 },
   lightboxDeleteText:{ color: '#ff6b6b', fontSize: 14, fontWeight: '600' },
+});
+
+const st = StyleSheet.create({
+  stageRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  stageBtn:    { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                 borderWidth: 1.5, borderColor: COLORS.border },
+  stageBtnInactive: { backgroundColor: COLORS.background, borderColor: COLORS.border },
+  stageBtnText:{ fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: COLORS.textMuted },
+  arrow:         { color: COLORS.border, fontSize: 16, marginHorizontal: 2 },
+  waitingRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,
+                   backgroundColor: '#fafafa', borderRadius: 10, padding: 10,
+                   borderWidth: 1, borderColor: COLORS.border },
+  waitingBadge:  { backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  waitingBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
+  waitingTimer:  { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: '#b45309',
+                   backgroundColor: '#fde68a', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  waitingHint:   { fontSize: 12, color: COLORS.textMuted, flex: 1 },
+  waitingBtn:    { marginLeft: 'auto', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  markWaitingBtn:{ backgroundColor: '#fef3c7' },
+  callInBtn:     { backgroundColor: '#d1fae5' },
+  waitingBtnText:{ fontSize: 12, fontWeight: '700', color: '#065f46' },
+  logBox:        { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 10, gap: 6 },
+  logRow:      { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  logDot:      { width: 7, height: 7, borderRadius: 4 },
+  logName:     { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: COLORS.text },
+  logTime:     { fontSize: 11, color: COLORS.textMuted },
+  logBy:       { fontSize: 11, color: COLORS.textMuted },
 });

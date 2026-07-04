@@ -79,6 +79,24 @@ async function autoCheckInCompany(companyId, timezone) {
         [ins.insertId, 'checked_in', sv.id]
       );
 
+      // Auto-assign default stage if configured
+      const [[defStage]] = await conn.query(
+        'SELECT id, name, color, employee_id FROM visit_stages WHERE company_id = ? AND is_default = 1 LIMIT 1',
+        [companyId]
+      );
+      if (defStage) {
+        const sf = ['current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?'];
+        const sv2 = [defStage.id, defStage.name, defStage.color];
+        if (defStage.employee_id) { sf.push('employee_id = ?'); sv2.push(defStage.employee_id); }
+        sv2.push(ins.insertId);
+        await conn.query(`UPDATE visits SET ${sf.join(', ')} WHERE id = ?`, sv2);
+        await conn.query(
+          `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
+           VALUES (?, ?, ?, ?, NULL, 'Auto')`,
+          [ins.insertId, defStage.id, defStage.name, defStage.color]
+        );
+      }
+
       await conn.commit();
       console.log(`[AutoCheckIn] Created visit ${sv.booking_ref} for company ${companyId}`);
     } catch (err) {

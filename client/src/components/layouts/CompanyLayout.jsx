@@ -3,7 +3,6 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ChangePasswordModal from '../ChangePasswordModal';
 import ImpersonationBanner from '../ImpersonationBanner';
-import api from '../../services/api';
 
 const navItems = [
   { to: '/dashboard',                label: 'Dashboard',   icon: '📊', exact: true },
@@ -24,7 +23,7 @@ export default function CompanyLayout() {
 
   function handleLogout() {
     logout();
-    navigate('/login');
+    navigate('/');
   }
 
   function openHelp() {

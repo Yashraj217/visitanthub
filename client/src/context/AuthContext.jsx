@@ -3,23 +3,43 @@ import api from '../services/api';
 
 const AuthContext = createContext(null);
 
+// sessionStorage = per-tab (isolated). localStorage = shared across tabs (seed for new tabs).
+// On first load of a new tab: copy localStorage token → sessionStorage so the tab auto-authenticates.
+// On logout: clear sessionStorage only — other open tabs keep their own sessionStorage intact.
+function seedSession() {
+  if (!sessionStorage.getItem('token')) {
+    const t = localStorage.getItem('token');
+    const u = localStorage.getItem('user');
+    if (t) sessionStorage.setItem('token', t);
+    if (u) sessionStorage.setItem('user', u);
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
+    seedSession();
+    try { return JSON.parse(sessionStorage.getItem('user')); } catch { return null; }
   });
   const [loading, setLoading] = useState(true);
-  const [impersonating, setImpersonating] = useState(() => !!localStorage.getItem('originalToken'));
+  const [impersonating, setImpersonating] = useState(() => !!sessionStorage.getItem('originalToken'));
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (token) {
       api.get('/auth/me')
-        .then(({ data }) => setUser(data))
+        .then(({ data }) => {
+          setUser(data);
+          sessionStorage.setItem('user', JSON.stringify(data));
+          localStorage.setItem('user', JSON.stringify(data));
+        })
         .catch(() => {
+          // Token is invalid/expired — clear both storages so it doesn't re-seed on next visit
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('user');
+          sessionStorage.removeItem('originalToken');
+          sessionStorage.removeItem('originalUser');
           localStorage.removeItem('token');
           localStorage.removeItem('user');
-          localStorage.removeItem('originalToken');
-          localStorage.removeItem('originalUser');
           setUser(null);
           setImpersonating(false);
         })
@@ -31,6 +51,9 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const { data } = await api.post('/auth/login', { email, password });
+    // Save to both so new tabs can auto-authenticate from localStorage seed
+    sessionStorage.setItem('token', data.token);
+    sessionStorage.setItem('user', JSON.stringify(data.user));
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
@@ -38,19 +61,22 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('originalToken');
-    localStorage.removeItem('originalUser');
+    // Clear this tab's sessionStorage only — other tabs are unaffected
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('originalToken');
+    sessionStorage.removeItem('originalUser');
     setUser(null);
     setImpersonating(false);
   }
 
   function startImpersonation(token, impersonatedUser) {
-    const currentToken = localStorage.getItem('token');
-    const currentUser  = localStorage.getItem('user');
-    localStorage.setItem('originalToken', currentToken || '');
-    localStorage.setItem('originalUser',  currentUser  || '');
+    const currentToken = sessionStorage.getItem('token');
+    const currentUser  = sessionStorage.getItem('user');
+    sessionStorage.setItem('originalToken', currentToken || '');
+    sessionStorage.setItem('originalUser',  currentUser  || '');
+    sessionStorage.setItem('token', token);
+    sessionStorage.setItem('user', JSON.stringify(impersonatedUser));
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(impersonatedUser));
     setUser(impersonatedUser);
@@ -58,12 +84,18 @@ export function AuthProvider({ children }) {
   }
 
   function stopImpersonation() {
-    const origToken   = localStorage.getItem('originalToken');
-    const origUserStr = localStorage.getItem('originalUser');
-    if (origToken) localStorage.setItem('token', origToken);
-    if (origUserStr) localStorage.setItem('user', origUserStr);
-    localStorage.removeItem('originalToken');
-    localStorage.removeItem('originalUser');
+    const origToken   = sessionStorage.getItem('originalToken');
+    const origUserStr = sessionStorage.getItem('originalUser');
+    if (origToken) {
+      sessionStorage.setItem('token', origToken);
+      localStorage.setItem('token', origToken);
+    }
+    if (origUserStr) {
+      sessionStorage.setItem('user', origUserStr);
+      localStorage.setItem('user', origUserStr);
+    }
+    sessionStorage.removeItem('originalToken');
+    sessionStorage.removeItem('originalUser');
     try { setUser(origUserStr ? JSON.parse(origUserStr) : null); } catch { setUser(null); }
     setImpersonating(false);
   }

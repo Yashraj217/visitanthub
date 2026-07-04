@@ -9,6 +9,7 @@ import { Ionicons }        from '@expo/vector-icons';
 import { useAuth }         from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { COLORS }          from '../../constants/colors';
+import { FONTS }           from '../../constants/fonts';
 import StatCard            from '../../components/StatCard';
 import VisitCard           from '../../components/VisitCard';
 import api                 from '../../services/api';
@@ -238,15 +239,15 @@ export default function AssocDashboardScreen({ navigation }) {
         {/* Visit stats */}
         <Text style={s.sectionTitle}>My Visits Today</Text>
         <View style={s.statsRow}>
-          <StatCard label="Total"   value={stats?.total}   color={COLORS.primary} icon="📋"
+          <StatCard label="Total"   value={stats?.total}   color={COLORS.primary} icon="📊"
             onPress={() => navigation.navigate('MyVisits', { initialFilter: 'all' })} />
-          <StatCard label="Pending" value={stats?.pending} color={COLORS.warning} icon="⏳"
+          <StatCard label="Pending" value={stats?.pending} color={COLORS.warning} icon="🔔"
             onPress={() => navigation.navigate('MyVisits', { initialFilter: 'pending' })} />
         </View>
         <View style={[s.statsRow, { marginTop: 10 }]}>
-          <StatCard label="In Progress" value={stats?.in_progress} color={COLORS.info}    icon="🔄"
+          <StatCard label="In Progress" value={stats?.in_progress} color={COLORS.info}    icon="⚡"
             onPress={() => navigation.navigate('MyVisits', { initialFilter: 'approved' })} />
-          <StatCard label="Done"        value={stats?.done}        color={COLORS.success} icon="✅"
+          <StatCard label="Done"        value={stats?.done}        color={COLORS.success} icon="🎯"
             onPress={() => navigation.navigate('MyVisits', { initialFilter: 'completed' })} />
         </View>
 
@@ -300,7 +301,7 @@ const s = StyleSheet.create({
   apptBannerTitle:{ fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: COLORS.primary },
   apptBannerSub:  { fontSize: 12, color: '#6366f1aa', marginTop: 2 },
 
-  sectionTitle:   { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
+  sectionTitle:   { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text, marginBottom: 12 },
   statsRow:       { flexDirection: 'row', gap: 10 },
   allDone:        { alignItems: 'center', paddingVertical: 40 },
   allDoneIcon:    { fontSize: 40, marginBottom: 10 },
@@ -319,7 +320,7 @@ const m = StyleSheet.create({
   title:          { fontSize: 17, fontFamily: 'Poppins_700Bold', color: COLORS.text },
   empty:          { alignItems: 'center', paddingVertical: 48 },
   emptyIcon:      { fontSize: 40, marginBottom: 12 },
-  emptyText:      { fontSize: 15, color: COLORS.textMuted },
+  emptyText:      { fontSize: 15, fontFamily: FONTS.regular, color: COLORS.textMuted },
 
   card:           { backgroundColor: COLORS.background, borderRadius: 14,
                     borderWidth: 1, borderColor: COLORS.border, padding: 14 },
@@ -328,11 +329,11 @@ const m = StyleSheet.create({
   timeBox:        { alignItems: 'flex-end' },
   timeText:       { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: COLORS.primary,
                     backgroundColor: '#eff0ff', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-  dateText:       { fontSize: 13, fontWeight: '700', color: COLORS.text, marginTop: 4 },
-  mobile:         { fontSize: 12, color: COLORS.textMuted, marginBottom: 4 },
-  service:        { fontSize: 13, color: COLORS.text, marginBottom: 2 },
-  label:          { fontWeight: '600' },
-  purpose:        { fontSize: 12, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
+  dateText:       { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 4 },
+  mobile:         { fontSize: 12, fontFamily: FONTS.regular, color: COLORS.textMuted, marginBottom: 4 },
+  service:        { fontSize: 13, fontFamily: FONTS.regular, color: COLORS.text, marginBottom: 2 },
+  label:          { fontFamily: FONTS.semiBold },
+  purpose:        { fontSize: 12, fontFamily: FONTS.regular, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
 
   btnRow:         { flexDirection: 'row', gap: 10, marginTop: 12 },
   btn:            { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },

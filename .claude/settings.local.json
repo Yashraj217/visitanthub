@@ -57,7 +57,17 @@
       "Read(//c/IIS/2custo/server/src/iisnode/**)",
       "PowerShell(Import-Module WebAdministration; Get-WebConfiguration \"system.applicationHost/applicationPools/add\" | Select-Object name)",
       "PowerShell(Restart-WebAppPool -Name \"2custo\"; Start-Sleep -Seconds 4; \\(Get-WebAppPoolState -Name \"2custo\"\\).Value)",
-      "PowerShell(\\(Get-Item \"c:\\\\IIS\\\\2custo\\\\server\\\\web.config\"\\).LastWriteTime = Get-Date; Restart-WebAppPool -Name \"2custo\"; Write-Host \"App pool restarted.\")"
+      "PowerShell(\\(Get-Item \"c:\\\\IIS\\\\2custo\\\\server\\\\web.config\"\\).LastWriteTime = Get-Date; Restart-WebAppPool -Name \"2custo\"; Write-Host \"App pool restarted.\")",
+      "Bash(iisreset /restart)",
+      "PowerShell(Restart-WebAppPool -Name \"2custo\" -ErrorAction SilentlyContinue; Start-Sleep 2; \\(Get-WebAppPoolState -Name \"2custo\"\\).Value)",
+      "Bash(mysql -u root -pIndia1234# visitor_management -e \"SET FOREIGN_KEY_CHECKS=0; TRUNCATE TABLE visits; SET FOREIGN_KEY_CHECKS=1; SELECT COUNT\\(*\\) AS remaining_rows FROM visits;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -e \"SELECT table_name, ROUND\\(\\(data_length + index_length\\) / 1024 / 1024, 2\\) AS size_mb FROM information_schema.tables WHERE table_schema = 'visitor_management' AND table_name = 'visits';\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -e \"OPTIMIZE TABLE visits;\" 2>&1)",
+      "Bash(curl -s -X POST https://graph.facebook.com/v18.0/1105070476033482/request_code -H 'Authorization: Bearer EAAS7JicTqSIBR4u07CTZCCtLludF5FSgCVsEaiYn1GiKUvZB4iNIQ6R3IeIZBUd4Tm42YSBMSUDsK75f99StibH4mVD4RBasu9ZAFU0Q4i94gCgb2qbSUr0K9VsStisk5ixQGBkL3MJZCp23hln9hueZAE1Qbdg1MNv85s3nU5zkq015jjz5fyBToXfxz9mgZDZD' -H 'Content-Type: application/json' -d '{\"code_method\": \"VOICE\", \"language\": \"en_US\"}')",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -e \"SELECT id, name, whatsapp_provider, LEFT\\(whatsapp_api_key, 30\\) AS api_key_preview, whatsapp_from FROM companies WHERE whatsapp_provider != 'none' AND whatsapp_api_key IS NOT NULL;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -s -N -e \"SELECT whatsapp_api_key FROM companies WHERE id = 1;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -e \"UPDATE companies SET whatsapp_api_key = 'EAAS7JicTqSIBR4u07CTZCCtLludF5FSgCVsEaiYn1GiKUvZB4iNIQ6R3IeIZBUd4Tm42YSBMSUDsK75f99StibH4mVD4RBasu9ZAFU0Q4i94gCgb2qbSUr0K9VsStisk5ixQGBkL3MJZCp23hln9hueZAE1Qbdg1MNv85s3nU5zkq015jjz5fyBToXfxz9mgZDZD|1105070476033482' WHERE id = 1;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root \"-pIndia1234#\" visitor_management -e \"SELECT LEFT\\(whatsapp_api_key,30\\) AS key_preview, whatsapp_provider FROM companies WHERE id=1;\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\Administrator\\AppData\\Local\\Android\\Sdk\\ndk\\27.1.12297006"
