@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -26,18 +26,37 @@ export default function Settings() {
     finally { setSaving(false); }
   }
 
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [fromInput, setFromInput]     = useState('');
+
   async function saveWhatsApp(e) {
     e.preventDefault();
+    if (profile.whatsapp_provider === 'meta' && !profile.whatsapp_api_key && !apiKeyInput.trim()) {
+      return toast.error('Please paste your Meta API Key');
+    }
     setSaving(true);
     try {
-      await api.put('/companies/me/settings', {
-        whatsapp_provider: profile.whatsapp_provider,
-        whatsapp_api_key: profile.whatsapp_api_key,
-        whatsapp_from: profile.whatsapp_from,
-      });
+      const payload = {
+        whatsapp_provider:        profile.whatsapp_provider,
+        notif_associate_arrival:  profile.notif_associate_arrival  ?? 1,
+        notif_visitor_checkin:    profile.notif_visitor_checkin    ?? 1,
+        notif_visit_approved:     profile.notif_visit_approved     ?? 1,
+        notif_booking_confirmed:  profile.notif_booking_confirmed  ?? 1,
+      };
+      if (profile.whatsapp_provider === 'meta') {
+        if (apiKeyInput.trim()) payload.whatsapp_api_key = apiKeyInput.trim();
+        if (fromInput.trim())   payload.whatsapp_from   = fromInput.trim();
+      }
+      await api.put('/companies/me/settings', payload);
       toast.success('WhatsApp settings saved');
+      setApiKeyInput('');
+      setFromInput('');
     } catch { toast.error('Failed to save'); }
     finally { setSaving(false); }
+  }
+
+  function toggle(field) {
+    return () => setProfile(p => ({ ...p, [field]: p[field] ? 0 : 1 }));
   }
 
   if (!profile) return <div className="p-8 text-gray-400">Loading…</div>;
@@ -53,7 +72,6 @@ export default function Settings() {
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
         {[
           { key: 'profile',      label: 'Profile' },
-          { key: 'designations', label: 'Designations' },
           { key: 'stages',       label: '🏷️ Stages' },
           { key: 'reference',    label: '🔢 Reference No.' },
           { key: 'whatsapp',     label: 'WhatsApp' },
@@ -203,30 +221,105 @@ export default function Settings() {
               <option value="none">None (disabled)</option>
               <option value="twilio">Twilio</option>
               <option value="meta">Meta Cloud API</option>
+              <option value="visitanthub">VisitantHub Managed (use our number)</option>
               <option value="wati">WATI / Interakt</option>
             </select>
           </div>
-          {profile.whatsapp_provider !== 'none' && <>
-            <div>
-              <label className="label">
-                {profile.whatsapp_provider === 'twilio' ? 'API Key (format: ACCOUNT_SID|AUTH_TOKEN)' :
-                 profile.whatsapp_provider === 'meta'   ? 'API Key (format: ACCESS_TOKEN|PHONE_NUMBER_ID)' :
-                 'API Key'}
-              </label>
-              <input type="password" className="input" placeholder="Paste your API key" value={profile.whatsapp_api_key||''} onChange={set('whatsapp_api_key')} />
+
+          {/* Meta Cloud API: ask if own account or managed */}
+          {profile.whatsapp_provider === 'meta' && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-700">Do you have your own Meta Business Account?</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { val: 'meta', label: 'Yes, I have my own', desc: 'Use your own Meta API credentials' },
+                  { val: 'visitanthub', label: 'No, use VisitantHub\'s', desc: 'Messages sent from our number — tokens apply' },
+                ].map(opt => (
+                  <label key={opt.val}
+                    className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
+                      profile.whatsapp_provider === opt.val
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                    <input type="radio" className="sr-only" name="meta_mode" value={opt.val}
+                      checked={profile.whatsapp_provider === opt.val}
+                      onChange={() => setProfile(p => ({ ...p, whatsapp_provider: opt.val }))} />
+                    <p className="text-sm font-semibold text-gray-900">{opt.label}</p>
+                    <p className="text-xs text-gray-500 mt-1">{opt.desc}</p>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div>
-              <label className="label">From Number</label>
-              <input className="input" placeholder="e.g. +14155238886" value={profile.whatsapp_from||''} onChange={set('whatsapp_from')} />
+          )}
+
+          {/* Own Meta account: show API key fields */}
+          {profile.whatsapp_provider === 'meta' && (
+            <div className="space-y-3 bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <p className="text-xs font-medium text-gray-600">API Key format: <code className="bg-gray-200 px-1 rounded">ACCESS_TOKEN|PHONE_NUMBER_ID</code></p>
+              <div>
+                <label className="label">API Key {profile.whatsapp_api_key && <span className="text-green-600 font-normal">✓ Configured</span>}</label>
+                <input type="password" className="input" placeholder={profile.whatsapp_api_key ? 'Paste new key to update' : 'Paste ACCESS_TOKEN|PHONE_NUMBER_ID'}
+                  value={apiKeyInput} onChange={e => setApiKeyInput(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">From Number {profile.whatsapp_from && <span className="text-green-600 font-normal">✓ Configured</span>}</label>
+                <input className="input" placeholder={profile.whatsapp_from ? 'Enter new number to update' : 'e.g. +14155238886'}
+                  value={fromInput} onChange={e => setFromInput(e.target.value)} />
+              </div>
             </div>
-          </>}
+          )}
+
+          {/* Managed (VisitantHub) info */}
+          {profile.whatsapp_provider === 'visitanthub' && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-green-800">✅ VisitantHub Managed WhatsApp</p>
+              <p className="text-sm text-green-700">Messages will be sent from <strong>VisitantHub</strong>'s verified WhatsApp number on your behalf. No API setup required.</p>
+              <p className="text-xs text-green-600">Each message costs 1 token. Top up tokens from the Billing panel.</p>
+              <a href="/dashboard/billing"
+                className="inline-flex items-center gap-1.5 mt-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                💳 View Billing &amp; Top-up Tokens →
+              </a>
+            </div>
+          )}
+
+          {/* Notification toggles — always visible so admin can plan even before provider is set */}
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-sm font-medium text-gray-700">Which messages to send</p>
+            <p className="text-xs text-gray-400">Toggle each event on or off. Disabled events will not send a WhatsApp message even when the provider is active.</p>
+            {[
+              { field: 'notif_associate_arrival',  label: 'Visitor arrival → notify associate',       desc: 'Sent to the associate when a visitor checks in at the kiosk' },
+              { field: 'notif_visitor_checkin',    label: 'Check-in confirmation → notify visitor',   desc: 'Sent to the visitor confirming they have checked in and are in queue' },
+              { field: 'notif_visit_approved',     label: 'Visit approved → notify visitor',          desc: 'Sent to the visitor when their visit is approved — includes token & room' },
+              { field: 'notif_booking_confirmed',  label: 'Appointment booked → notify visitor',      desc: 'Sent when a visitor books an appointment through the booking page' },
+            ].map(({ field, label, desc }) => {
+              const on = !!(profile[field] ?? 1);
+              return (
+                <div key={field} className="flex items-center justify-between gap-4 bg-gray-50 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggle(field)}
+                    className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      on
+                        ? 'bg-green-600 border-green-600 text-white hover:bg-green-700'
+                        : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                    }`}>
+                    <span className={`w-2 h-2 rounded-full ${on ? 'bg-white' : 'bg-gray-300'}`} />
+                    {on ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="flex justify-end pt-2">
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </form>
       )}
-
-      {tab === 'designations' && <DesignationsTab />}
 
       {tab === 'reference' && (
         <RefTab profile={profile} onSaved={() => api.get('/companies/me/profile').then(({ data }) => setProfile(data))} />
@@ -526,21 +619,34 @@ function KioskTab({ profile, kioskUrl }) {
   const baseDisplayUrl = `${window.location.origin}/display/${profile.slug}`;
 
   const SCREENS_KEY = `tv_screens_${profile.slug}`;
-  // screens: [{ name: string, services: string[] }]
   const [screens, setScreens] = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(SCREENS_KEY) || '[]');
-      // migrate old format (plain strings) to objects
       return raw.map(s => typeof s === 'string' ? { name: s, services: [] } : s);
     } catch { return []; }
   });
   const [newScreen, setNewScreen]   = useState('');
-  const [editingIdx, setEditingIdx] = useState(null); // which screen is expanded for editing
-  const [services, setServices]     = useState([]);   // all company services
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [services, setServices]     = useState([]);
+
+  const [displayBoardEnabled, setDisplayBoardEnabled] = useState(true);
+  const [togglingBoard, setTogglingBoard]             = useState(false);
 
   useEffect(() => {
     api.get('/services').then(({ data }) => setServices(data.map(s => s.name))).catch(() => {});
+    api.get('/stages/display-board').then(({ data }) => setDisplayBoardEnabled(!!data.enabled)).catch(() => {});
   }, []);
+
+  async function toggleDisplayBoard() {
+    const next = !displayBoardEnabled;
+    setTogglingBoard(true);
+    try {
+      await api.put('/stages/display-board', { enabled: next });
+      setDisplayBoardEnabled(next);
+      toast.success(next ? 'TV Display Board enabled' : 'TV Display Board disabled');
+    } catch { toast.error('Failed to update'); }
+    finally { setTogglingBoard(false); }
+  }
 
   function saveScreens(updated) {
     setScreens(updated);
@@ -666,8 +772,28 @@ function KioskTab({ profile, kioskUrl }) {
             </div>
           </div>
 
-          {/* TV Screens */}
+          {/* TV Display Board */}
           <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500">
+                  TV Display Board <span className="text-gray-400 font-normal">(shows live visitor queue by service)</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleDisplayBoard}
+                disabled={togglingBoard}
+                className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-60 ${
+                  displayBoardEnabled
+                    ? 'bg-green-600 border-green-600 text-white hover:bg-green-700'
+                    : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                }`}>
+                <span className={`w-2 h-2 rounded-full ${displayBoardEnabled ? 'bg-white' : 'bg-gray-300'}`} />
+                {togglingBoard ? '…' : displayBoardEnabled ? 'Display: ON' : 'Display: OFF'}
+              </button>
+            </div>
+
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-gray-500">
                 TV Screens <span className="text-gray-400 font-normal">(each screen can show different services)</span>
@@ -705,7 +831,16 @@ function KioskTab({ profile, kioskUrl }) {
                     {services.length === 0
                       ? <p className="text-xs text-gray-400">No services found. Add services in the Services section first.</p>
                       : <>
-                          <p className="text-[11px] text-gray-500 mb-2">Select which services appear on this TV. Leave all unchecked to show everything.</p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[11px] text-gray-500">Select which services appear on this TV.</p>
+                            {sc.services.length > 0 && (
+                              <button type="button"
+                                onClick={() => saveScreens(screens.map((s, i) => i !== idx ? s : { ...s, services: [] }))}
+                                className="text-[11px] text-red-500 hover:text-red-700 font-medium">
+                                ✕ Show All (clear)
+                              </button>
+                            )}
+                          </div>
                           <div className="flex flex-wrap gap-2">
                             {services.map(svc => {
                               const active = sc.services.includes(svc);
@@ -833,6 +968,10 @@ const STAGE_COLORS = [
 ];
 
 function StagesTab() {
+  const [stagesEnabled,        setStagesEnabled]        = useState(false);
+  const [togglingEnabled,      setTogglingEnabled]      = useState(false);
+  const [waitingStatusEnabled, setWaitingStatusEnabled] = useState(false);
+  const [togglingWaiting,      setTogglingWaiting]      = useState(false);
   const [stages,    setStages]    = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -840,9 +979,16 @@ function StagesTab() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/stages').then(({ data }) => Array.isArray(data) ? data : []).catch(() => []),
+      api.get('/stages/enabled').then(({ data }) => !!data.enabled).catch(() => false),
+      api.get('/stages/waiting-status').then(({ data }) => !!data.enabled).catch(() => false),
+      api.get('/stages/all').then(({ data }) => Array.isArray(data) ? data : []).catch(() => []),
       api.get('/visits/employees').then(({ data }) => Array.isArray(data) ? data : []).catch(() => []),
-    ]).then(([s, e]) => { setStages(s); setEmployees(e); }).finally(() => setLoading(false));
+    ]).then(([enabled, waitingEnabled, s, e]) => {
+      setStagesEnabled(enabled);
+      setWaitingStatusEnabled(waitingEnabled);
+      setStages(s);
+      setEmployees(e);
+    }).finally(() => setLoading(false));
   }, []);
 
   function addStage() {
@@ -851,6 +997,7 @@ function StagesTab() {
       name: '',
       color: STAGE_COLORS[prev.length % STAGE_COLORS.length],
       is_final: false,
+      is_optional: false,
     }]);
   }
 
@@ -880,6 +1027,28 @@ function StagesTab() {
     });
   }
 
+  async function toggleEnabled() {
+    const next = !stagesEnabled;
+    setTogglingEnabled(true);
+    try {
+      await api.put('/stages/enabled', { enabled: next });
+      setStagesEnabled(next);
+      toast.success(next ? 'Stage tracking enabled' : 'Stage tracking disabled');
+    } catch { toast.error('Failed to update'); }
+    finally { setTogglingEnabled(false); }
+  }
+
+  async function toggleWaitingStatus() {
+    const next = !waitingStatusEnabled;
+    setTogglingWaiting(true);
+    try {
+      await api.put('/stages/waiting-status', { enabled: next });
+      setWaitingStatusEnabled(next);
+      toast.success(next ? 'Waiting status enabled' : 'Waiting status hidden');
+    } catch { toast.error('Failed to update'); }
+    finally { setTogglingWaiting(false); }
+  }
+
   async function save() {
     if (stages.some(s => !s.name.trim())) {
       toast.error('All stages must have a name'); return;
@@ -897,21 +1066,63 @@ function StagesTab() {
 
   return (
     <div className="card space-y-5">
-      <div>
-        <h2 className="text-base font-semibold">Visit Stages</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Define the stages a visitor goes through. Associates and admins can advance visitors
-          through these stages in real time. The final stage automatically marks the visit as completed.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">Visit Stages</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Define the stages a visitor goes through. Associates can advance visitors
+            through these stages in real time.
+          </p>
+        </div>
+        <button
+          onClick={toggleEnabled}
+          disabled={togglingEnabled}
+          className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-colors disabled:opacity-60 ${
+            stagesEnabled
+              ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
+              : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+          }`}>
+          <span className={`w-2 h-2 rounded-full ${stagesEnabled ? 'bg-white' : 'bg-gray-300'}`} />
+          {togglingEnabled ? '…' : stagesEnabled ? 'Stages: ON' : 'Stages: OFF'}
+        </button>
       </div>
 
-      {stages.length === 0 && (
+      {/* Waiting status sub-toggle — only relevant when stages are on */}
+      {stagesEnabled && (
+        <div className="flex items-center justify-between gap-4 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Waiting Status</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Lets associates mark a visitor as "Waiting" or "In Progress" at their stage. Hidden by default.
+            </p>
+          </div>
+          <button
+            onClick={toggleWaitingStatus}
+            disabled={togglingWaiting}
+            className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-60 ${
+              waitingStatusEnabled
+                ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
+                : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+            }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${waitingStatusEnabled ? 'bg-white' : 'bg-gray-300'}`} />
+            {togglingWaiting ? '…' : waitingStatusEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      )}
+
+      {!stagesEnabled && (
+        <div className="rounded-xl bg-gray-50 border border-dashed border-gray-200 px-5 py-6 text-center text-sm text-gray-400">
+          Stage tracking is off. Enable it above to configure stages and show them to associates.
+        </div>
+      )}
+
+      {stagesEnabled && stages.length === 0 && (
         <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
           No stages configured. Add your first stage below.
         </div>
       )}
 
-      <div className="space-y-2">
+      {!stagesEnabled ? null : <><div className="space-y-2">
         {stages.map((s, idx) => (
           <div key={s.id || s._key} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
             {/* Color picker */}
@@ -1015,9 +1226,9 @@ function StagesTab() {
                     <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full text-white"
                       style={{ backgroundColor: s.color }}>
                       {s.name || `Stage ${i + 1}`}
-                      {s.is_final && ' ✓'}
+                      {!!s.is_final && ' ✓'}
                     </span>
-                    {s.is_default && <span className="text-[10px] text-green-500 font-semibold mt-0.5">★ Default</span>}
+                    {s.is_default  && <span className="text-[10px] text-green-500 font-semibold mt-0.5">★ Default</span>}
                     {emp && <span className="text-[10px] text-gray-400 mt-0.5">{emp.name}</span>}
                   </span>
                   {i < stages.length - 1 && <span className="text-gray-300 text-xs self-start mt-2">→</span>}
@@ -1027,6 +1238,7 @@ function StagesTab() {
           </div>
         </div>
       )}
+      </> /* end stagesEnabled */}
     </div>
   );
 }

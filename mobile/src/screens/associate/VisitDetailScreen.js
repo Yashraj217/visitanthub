@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, TextInput, Image, Modal,
+  Alert, ActivityIndicator, TextInput, Image, Modal, Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons }     from '@expo/vector-icons';
 import * as ImagePicker      from 'expo-image-picker';
@@ -13,8 +14,7 @@ import { useAuth }      from '../../context/AuthContext';
 import api, { BASE_URL } from '../../services/api';
 
 const IMAGE_BASE  = BASE_URL.replace(/\/api$/, '');
-const MAX_KB      = 150;
-const MAX_DIM     = 1000; // px on longest side
+const MAX_DIM     = 1000;
 
 async function compressImage(uri, origWidth, origHeight) {
   const actions = [];
@@ -114,16 +114,32 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
   const savedRef = useRef({});
 
   // Stage tracking
-  const [stages,          setStages]          = useState([]);
-  const [advancingStage,  setAdvancingStage]  = useState(false);
-  const [waitingLoading,  setWaitingLoading]  = useState(false);
-  const [nowMs,           setNowMs]           = useState(() => Date.now());
+  const [stages,         setStages]         = useState([]);
+  const [advancingStage, setAdvancingStage] = useState(false);
+  const [waitingLoading, setWaitingLoading] = useState(false);
+  const [nowMs,          setNowMs]          = useState(() => Date.now());
+
+  // Next visit
+  const [nextVisitSaving, setNextVisitSaving] = useState(false);
+  const [showDatePicker,  setShowDatePicker]  = useState(false);
+  const [pickerDate,      setPickerDate]      = useState(new Date());
+
+  // Refer / transfer
+  const [referVisible,  setReferVisible]  = useState(false);
+  const [empList,       setEmpList]       = useState([]);
+  const [empLoading,    setEmpLoading]    = useState(false);
+  const [referring,     setReferring]     = useState(false);
 
   // Photos
   const [photos,         setPhotos]         = useState([]);
   const [photosLoading,  setPhotosLoading]  = useState(true);
   const [uploading,      setUploading]      = useState(false);  // true = uploading, 'compressing' = compressing
   const [lightbox,       setLightbox]       = useState(null);
+
+  // Notes
+  const [notes,      setNotes]      = useState([]);
+  const [noteText,   setNoteText]   = useState('');
+  const [addingNote, setAddingNote] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -148,7 +164,26 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
       .then(({ data }) => setPhotos(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setPhotosLoading(false));
+
+    api.get(`/visits/${visit.id}/notes`).then(({ data }) => setNotes(data)).catch(() => {});
   }, []);
+
+  async function saveNextVisit(date) {
+    setNextVisitSaving(true);
+    try {
+      const dateStr = date.toISOString().slice(0, 10);
+      await api.put(`/visits/${visit.id}/next-visit`, { next_visit_date: dateStr });
+      setVisit(v => ({ ...v, next_visit_date: dateStr }));
+    } catch {
+      Alert.alert('Error', 'Failed to save next visit date.');
+    } finally { setNextVisitSaving(false); }
+  }
+
+  function applyPreset(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    saveNextVisit(d);
+  }
 
   function handleFieldChange(fieldId, value) {
     setFieldVals(prev => ({ ...prev, [fieldId]: value }));
@@ -167,17 +202,40 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
     } finally { setSaving(false); }
   }
 
+  function confirmStageMove(stage, isBackward) {
+    const transfersTo = stage.employee_id && stage.employee_id !== visit.employee_id
+      ? ` Visitor will be transferred to ${stage.employee_name}.`
+      : '';
+    const warning = isBackward ? ' This moves the visitor backward.' : '';
+    Alert.alert(
+      'Move to Stage',
+      `Move visitor to "${stage.name}"?${transfersTo}${warning}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move', onPress: () => handleAdvanceStage(stage.id) },
+      ]
+    );
+  }
+
   async function handleAdvanceStage(stageId) {
     setAdvancingStage(true);
     try {
       const { data } = await api.put(`/visits/${visit.id}/stage`, { stageId });
+      // If transferred to a different department or final stage — this visit leaves our queue
+      if (data.is_final || data.status_reset === 'pending') {
+        Alert.alert(
+          data.is_final ? 'Visit Completed' : 'Sent to Next Department',
+          `Visitor moved to "${data.current_stage_name}".`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        return;
+      }
       setVisit(v => ({
         ...v,
         current_stage_id:    data.current_stage_id,
         current_stage_name:  data.current_stage_name,
         current_stage_color: data.current_stage_color,
         stage_logs:          data.logs,
-        ...(data.status_reset ? { status: data.status_reset } : {}),
       }));
     } catch { Alert.alert('Error', 'Failed to update stage.'); }
     finally { setAdvancingStage(false); }
@@ -190,6 +248,31 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
       setVisit(v => ({ ...v, stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since }));
     } catch { Alert.alert('Error', 'Failed to update waiting status.'); }
     finally { setWaitingLoading(false); }
+  }
+
+  async function openRefer() {
+    setReferVisible(true);
+    setEmpLoading(true);
+    try {
+      const { data } = await api.get('/visits/employees');
+      setEmpList(data.filter(e => e.id !== visit.employee_id));
+    } catch {
+      Alert.alert('Error', 'Could not load associates.');
+      setReferVisible(false);
+    } finally { setEmpLoading(false); }
+  }
+
+  async function handleRefer(emp) {
+    setReferring(true);
+    try {
+      await api.put(`/visits/${visit.id}/employee`, { employee_id: emp.id });
+      Alert.alert('Referred', `Visitor referred to ${emp.name}.`, [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+      setReferVisible(false);
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to refer visitor.');
+    } finally { setReferring(false); }
   }
 
   function fmtElapsedMs(since) {
@@ -233,6 +316,17 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
         },
       },
     ]);
+  }
+
+  async function submitNote() {
+    if (!noteText.trim()) return;
+    setAddingNote(true);
+    try {
+      const { data } = await api.post(`/visits/${visit.id}/notes`, { note: noteText.trim() });
+      setNotes(prev => [...prev, data]);
+      setNoteText('');
+    } catch { Alert.alert('Error', 'Failed to add note.'); }
+    finally { setAddingNote(false); }
   }
 
   async function pickAndUpload(source) {
@@ -310,7 +404,7 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
     });
   }
 
-  const actions       = STATUS_ACTIONS[visit.status] || [];
+  const actions = STATUS_ACTIONS[visit.status] || [];
   const visitorFields = (visit.custom_fields || []).filter(f => !f.is_hidden);
   const staffFields   = (visit.custom_fields || []).filter(f => f.is_hidden);
 
@@ -366,17 +460,75 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
           <Row label="Notes"     value={visit.notes} />
         </View>
 
+        {/* Refer / Transfer */}
+        {(visit.status === 'pending' || visit.status === 'approved') && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Refer / Transfer</Text>
+            <TouchableOpacity style={sr.referBtn} onPress={openRefer} activeOpacity={0.75}>
+              <Ionicons name="arrow-forward-circle-outline" size={18} color={COLORS.primary} />
+              <Text style={sr.referBtnText}>Refer to Another Associate</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Waiting status — only visible when admin has enabled the feature */}
+        {(visit.status === 'pending' || visit.status === 'approved') && user?.company_waiting_status_enabled && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Waiting Status</Text>
+            <View style={st.waitingRow}>
+              {visit.stage_status === 'waiting' ? (
+                <>
+                  <View style={st.waitingBadge}>
+                    <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
+                  </View>
+                  {visit.stage_waiting_since && (
+                    <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
+                  )}
+                  <TouchableOpacity
+                    style={[st.waitingBtn, st.callInBtn]}
+                    onPress={() => handleStageWaiting('in_progress')}
+                    disabled={waitingLoading}>
+                    <Text style={st.waitingBtnText}>
+                      {waitingLoading ? '…' : 'Call In ▶'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={st.waitingHint}>
+                    {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[st.waitingBtn, st.markWaitingBtn]}
+                    onPress={() => handleStageWaiting('waiting')}
+                    disabled={waitingLoading}>
+                    <Text style={[st.waitingBtnText, { color: '#92400e' }]}>
+                      {waitingLoading ? '…' : 'Mark Waiting'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Stage tracker */}
         {stages.length > 0 && (
           <View style={s.card}>
             <Text style={s.sectionTitle}>Stage Progress</Text>
 
-            {/* Stage buttons */}
+            {/* Stage pills — any non-current stage is tappable (forward or backward) */}
+            {(visit.status === 'pending' || visit.status === 'approved') && (
+              <Text style={st.stageHint}>Tap any stage to move visitor</Text>
+            )}
             <View style={st.stageRow}>
               {stages.map((stage, i) => {
-                const isCurrent = visit.current_stage_id === stage.id;
-                const logs      = visit.stage_logs || [];
-                const isDone    = logs.some(l => l.stage_name === stage.name);
+                const isCurrent  = visit.current_stage_id === stage.id;
+                const logs       = visit.stage_logs || [];
+                const isDone     = logs.some(l => l.stage_name === stage.name);
+                const curIdx     = stages.findIndex(sg => sg.id === visit.current_stage_id);
+                const isBackward = !isCurrent && curIdx !== -1 && i < curIdx;
+                const canMove    = !isCurrent && (visit.status === 'pending' || visit.status === 'approved');
                 return (
                   <View key={stage.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
@@ -385,11 +537,14 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
                         isCurrent && { backgroundColor: stage.color, borderColor: stage.color },
                         isDone && !isCurrent && { backgroundColor: stage.color + 'aa', borderColor: stage.color },
                         !isCurrent && !isDone && st.stageBtnInactive,
+                        // Tappable undone stages get a tinted background + stage-colored border (no dashed — unreliable on Android)
+                        canMove && !isDone && { borderColor: stage.color, backgroundColor: stage.color + '22' },
                       ]}
-                      disabled={advancingStage}
-                      onPress={() => handleAdvanceStage(isCurrent ? null : stage.id)}
-                      activeOpacity={0.75}>
-                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' }]}>
+                      disabled={!canMove || advancingStage}
+                      onPress={() => canMove && confirmStageMove(stage, isBackward)}
+                      activeOpacity={canMove ? 0.7 : 1}>
+                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' },
+                        canMove && !isDone && { color: stage.color }]}>
                         {isDone && !isCurrent ? '✓ ' : ''}{stage.name}{stage.is_final ? ' 🏁' : ''}
                       </Text>
                     </TouchableOpacity>
@@ -398,40 +553,6 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
                 );
               })}
             </View>
-
-            {/* Waiting toggle — shown when a stage is active */}
-            {visit.current_stage_id && (
-              <View style={st.waitingRow}>
-                {visit.stage_status === 'waiting' ? (
-                  <>
-                    <View style={st.waitingBadge}>
-                      <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
-                    </View>
-                    {visit.stage_waiting_since && (
-                      <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
-                    )}
-                    <TouchableOpacity
-                      style={[st.waitingBtn, st.callInBtn]}
-                      onPress={() => handleStageWaiting('in_progress')}
-                      disabled={waitingLoading}>
-                      <Text style={st.waitingBtnText}>Call In ▶</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={st.waitingHint}>
-                      {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
-                    </Text>
-                    <TouchableOpacity
-                      style={[st.waitingBtn, st.markWaitingBtn]}
-                      onPress={() => handleStageWaiting('waiting')}
-                      disabled={waitingLoading}>
-                      <Text style={[st.waitingBtnText, { color: '#92400e' }]}>Mark Waiting</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            )}
 
             {/* Stage history */}
             {(visit.stage_logs || []).length > 0 && (
@@ -522,6 +643,85 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Next Visit */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Next Visit</Text>
+          {visit.next_visit_date ? (
+            <Text style={s.current}>
+              Scheduled: <Text style={{ color: COLORS.primary, fontWeight: '600' }}>
+                {new Date(String(visit.next_visit_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Text>
+            </Text>
+          ) : (
+            <Text style={s.current}>No next visit scheduled</Text>
+          )}
+          <View style={snv.presets}>
+            {[{ label: '1 Wk', days: 7 }, { label: '2 Wks', days: 14 }, { label: '3 Wks', days: 21 },
+              { label: '1 Mo', days: 30 }, { label: '3 Mo', days: 90 }].map(({ label, days }) => (
+              <TouchableOpacity key={days} style={snv.chip} activeOpacity={0.7}
+                onPress={() => applyPreset(days)} disabled={nextVisitSaving}>
+                <Text style={snv.chipText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={snv.chip} activeOpacity={0.7}
+              onPress={() => { setPickerDate(new Date()); setShowDatePicker(true); }}
+              disabled={nextVisitSaving}>
+              <Text style={snv.chipText}>Custom</Text>
+            </TouchableOpacity>
+          </View>
+          {nextVisitSaving && <Text style={s.current}>Saving…</Text>}
+          {showDatePicker && (
+            <DateTimePicker
+              value={pickerDate}
+              mode="date"
+              minimumDate={new Date()}
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              onChange={(e, date) => {
+                setShowDatePicker(Platform.OS === 'ios');
+                if (date) { setPickerDate(date); saveNextVisit(date); }
+              }}
+            />
+          )}
+        </View>
+
+        {/* Notes */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Notes {notes.length > 0 ? `(${notes.length})` : ''}</Text>
+          {notes.length === 0 && (
+            <Text style={sn.empty}>No notes yet. Add one below.</Text>
+          )}
+          {notes.map(n => (
+            <View key={n.id} style={sn.noteItem}>
+              <View style={sn.noteHeader}>
+                <Text style={sn.noteAuthor}>{n.author_name}</Text>
+                <Text style={sn.noteTime}>
+                  {new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                </Text>
+              </View>
+              <Text style={sn.noteText}>{n.note}</Text>
+            </View>
+          ))}
+          <View style={sn.inputRow}>
+            <TextInput
+              style={sn.input}
+              placeholder="Add a note…"
+              placeholderTextColor={COLORS.textMuted}
+              value={noteText}
+              onChangeText={setNoteText}
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[sn.sendBtn, (!noteText.trim() || addingNote) && sn.sendBtnDisabled]}
+              onPress={submitNote}
+              disabled={!noteText.trim() || addingNote}>
+              {addingNote
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="send" size={16} color="#fff" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Photos */}
         <View style={s.card}>
           <View style={s.photosHeader}>
@@ -571,6 +771,54 @@ export default function AssocVisitDetailScreen({ route, navigation }) {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       )}
+
+      {/* Refer modal */}
+      <Modal visible={referVisible} transparent animationType="slide" onRequestClose={() => setReferVisible(false)}>
+        <View style={sr.overlay}>
+          <View style={sr.sheet}>
+            <View style={sr.sheetHeader}>
+              <Text style={sr.sheetTitle}>Refer to Associate</Text>
+              <TouchableOpacity onPress={() => setReferVisible(false)}>
+                <Ionicons name="close" size={22} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            {empLoading ? (
+              <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 32 }} />
+            ) : empList.length === 0 ? (
+              <Text style={sr.emptyText}>No other associates available.</Text>
+            ) : (
+              <ScrollView style={sr.empList} keyboardShouldPersistTaps="handled">
+                {empList.map(emp => (
+                  <TouchableOpacity
+                    key={emp.id}
+                    style={sr.empRow}
+                    onPress={() => handleRefer(emp)}
+                    disabled={referring}
+                    activeOpacity={0.7}>
+                    <View style={sr.empAvatar}>
+                      <Text style={sr.empAvatarText}>{(emp.name || '?')[0].toUpperCase()}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={sr.empName}>{emp.name}</Text>
+                      {emp.designation ? <Text style={sr.empDesig}>{emp.designation}</Text> : null}
+                      {emp.location ? <Text style={sr.empLoc}>📍 {emp.location}</Text> : null}
+                    </View>
+                    {referring ? null : (
+                      <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            {referring && (
+              <View style={sr.referringRow}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={sr.referringText}>Transferring…</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Lightbox */}
       <Modal visible={!!lightbox} transparent animationType="fade" onRequestClose={() => setLightbox(null)}>
@@ -643,6 +891,7 @@ const s = StyleSheet.create({
   saveBtnText:      { color: '#fff', fontWeight: '700', fontSize: 14 },
   actionBtn:        { borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   actionBtnText:    { color: '#fff', fontWeight: '700', fontSize: 14 },
+  current:          { fontSize: 13, color: COLORS.textMuted, marginBottom: 10 },
   overlay:          { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)',
                       justifyContent: 'center', alignItems: 'center' },
 
@@ -678,6 +927,7 @@ const s = StyleSheet.create({
 });
 
 const st = StyleSheet.create({
+  stageHint:   { fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 },
   stageRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   stageBtn:    { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
                  borderWidth: 1.5, borderColor: COLORS.border },
@@ -702,4 +952,55 @@ const st = StyleSheet.create({
   logName:     { fontSize: 12, fontFamily: 'Poppins_600SemiBold', color: COLORS.text },
   logTime:     { fontSize: 11, color: COLORS.textMuted },
   logBy:       { fontSize: 11, color: COLORS.textMuted },
+});
+
+const sr = StyleSheet.create({
+  referBtn:       { flexDirection: 'row', alignItems: 'center', gap: 10,
+                    backgroundColor: '#eff0ff', borderRadius: 12,
+                    paddingHorizontal: 16, paddingVertical: 12,
+                    borderWidth: 1.5, borderColor: '#c7c8f0' },
+  referBtnText:   { fontSize: 14, fontWeight: '700', color: COLORS.primary, flex: 1 },
+  overlay:        { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet:          { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+                    paddingBottom: 36, maxHeight: '75%' },
+  sheetHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    paddingHorizontal: 20, paddingVertical: 16,
+                    borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  sheetTitle:     { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  empList:        { paddingHorizontal: 16, paddingTop: 8 },
+  empRow:         { flexDirection: 'row', alignItems: 'center', gap: 12,
+                    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  empAvatar:      { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary,
+                    alignItems: 'center', justifyContent: 'center' },
+  empAvatarText:  { fontSize: 16, fontWeight: '700', color: '#fff' },
+  empName:        { fontSize: 14, fontWeight: '600', color: COLORS.text },
+  empDesig:       { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
+  empLoc:         { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  emptyText:      { textAlign: 'center', color: COLORS.textMuted, padding: 32, fontSize: 14 },
+  referringRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    gap: 10, paddingVertical: 12 },
+  referringText:  { fontSize: 14, color: COLORS.textMuted },
+});
+
+const sn = StyleSheet.create({
+  empty:           { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 10 },
+  noteItem:        { backgroundColor: COLORS.background, borderRadius: 10, padding: 10, marginBottom: 8,
+                     borderWidth: 1, borderColor: COLORS.border },
+  noteHeader:      { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  noteAuthor:      { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  noteTime:        { fontSize: 11, color: COLORS.textMuted },
+  noteText:        { fontSize: 13, color: COLORS.text, lineHeight: 19 },
+  inputRow:        { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+  input:           { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+                     paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
+                     color: COLORS.text, backgroundColor: '#fafafa', maxHeight: 100 },
+  sendBtn:         { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.primary,
+                     alignItems: 'center', justifyContent: 'center' },
+  sendBtnDisabled: { backgroundColor: COLORS.border },
+});
+
+const snv = StyleSheet.create({
+  presets:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
+  chip:     { backgroundColor: '#eff0ff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  chipText: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
 });

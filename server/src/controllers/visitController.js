@@ -1,6 +1,8 @@
 const { pool } = require('../config/database');
 const { localDateToUtcRange } = require('../utils/tz');
 const { sendApprovalNotification } = require('../services/whatsapp');
+const { sendVisitRejectionEmail } = require('../services/email');
+const { broadcast } = require('../services/displayBroadcaster');
 
 /**
  * After any status change, re-evaluate which pending visitor for an employee
@@ -70,7 +72,7 @@ async function list(req, res) {
                     v.employee_id, v.visitor_id,
                     v.current_stage_id, v.current_stage_name, v.current_stage_color,
                     v.is_ready, v.ready_at, v.approved_at,
-                    v.stage_status, v.stage_waiting_since,
+                    v.stage_status, v.stage_waiting_since, v.next_visit_date,
                     vis.name AS visitor_name, vis.mobile, vis.email AS visitor_email,
                     emp.name AS employee_name, emp.designation,
                     (SELECT COUNT(*) FROM visit_photos p WHERE p.visit_id = v.id) AS photo_count
@@ -102,14 +104,18 @@ async function list(req, res) {
     params.push(start, end);
   }
 
-  // company_user: always restrict to own visits — ignores any employee_id query param
+  // company_user: show visits assigned to them OR currently at a stage they own
+  // (so Registration associate can process walk-throughs without stealing the visit from the intended associate)
   if (req.user.role === 'company_user') {
     if (!req.user.employee_id) {
       const pg = req.query.page ? 1 : null;
       return res.json(pg !== null ? { visits: [], hasMore: false, page: 1 } : []);
     }
-    sql += ' AND v.employee_id = ?';
-    params.push(req.user.employee_id);
+    sql += ` AND (v.employee_id = ? OR (
+               EXISTS(SELECT 1 FROM companies WHERE id = ? AND stages_enabled = 1)
+               AND v.current_stage_id IN (SELECT id FROM visit_stages WHERE employee_id = ? AND company_id = ?)
+             ))`;
+    params.push(req.user.employee_id, req.user.company_id, req.user.employee_id, req.user.company_id);
   } else if (employee_id) {
     sql += ' AND v.employee_id = ?';
     params.push(employee_id);
@@ -248,7 +254,9 @@ async function updateStatus(req, res) {
     // ── Apply status update ───────────────────────────────────────────────
     let updateSql = status === 'approved'
       ? 'UPDATE visits SET status = ?, notes = ?, is_ready = 0, approved_at = NOW() WHERE id = ? AND company_id = ?'
-      : 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
+      : (status === 'completed' || status === 'rejected')
+        ? 'UPDATE visits SET status = ?, notes = ?, stage_status = NULL, stage_waiting_since = NULL WHERE id = ? AND company_id = ?'
+        : 'UPDATE visits SET status = ?, notes = ? WHERE id = ? AND company_id = ?';
     const [result] = await pool.query(updateSql,
       [status, notes || null, req.params.id, req.user.company_id]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Visit not found' });
@@ -270,7 +278,8 @@ async function updateStatus(req, res) {
         `SELECT v.id, v.ref_number, v.visit_time, v.service_name, v.purpose,
                 vis.name AS visitor_name, vis.mobile AS visitor_mobile,
                 emp.name AS emp_name, emp.designation, emp.location,
-                c.name AS company_name, c.whatsapp_provider, c.whatsapp_api_key, c.whatsapp_from
+                c.id AS company_id, c.name AS company_name, c.whatsapp_provider, c.whatsapp_api_key, c.whatsapp_from,
+                c.notif_visit_approved, c.whatsapp_tokens
          FROM visits v
          JOIN visitors  vis ON vis.id = v.visitor_id
          JOIN employees emp ON emp.id = v.employee_id
@@ -281,8 +290,9 @@ async function updateStatus(req, res) {
         if (!rows.length) return;
         const r = rows[0];
         sendApprovalNotification({
-          company:  { name: r.company_name, whatsapp_provider: r.whatsapp_provider,
-                      whatsapp_api_key: r.whatsapp_api_key, whatsapp_from: r.whatsapp_from },
+          company:  { id: r.company_id, name: r.company_name, whatsapp_provider: r.whatsapp_provider,
+                      whatsapp_api_key: r.whatsapp_api_key, whatsapp_from: r.whatsapp_from,
+                      notif_visit_approved: r.notif_visit_approved, whatsapp_tokens: r.whatsapp_tokens },
           employee: { name: r.emp_name, designation: r.designation, location: r.location },
           visitor:  { name: r.visitor_name, mobile: r.visitor_mobile },
           visit:    { id: r.id, ref_number: r.ref_number, visit_time: r.visit_time,
@@ -291,7 +301,36 @@ async function updateStatus(req, res) {
       }).catch(err => console.error('[Approval fetch error]', err.message));
     }
 
+    // ── Fire rejection email (non-blocking) ─────────────────────────────
+    if (status === 'rejected') {
+      pool.query(
+        `SELECT v.ref_number, v.service_name, v.purpose,
+                vis.name AS visitor_name, vis.email AS visitor_email,
+                emp.name AS emp_name,
+                c.name AS company_name
+         FROM visits v
+         JOIN visitors  vis ON vis.id = v.visitor_id
+         JOIN employees emp ON emp.id = v.employee_id
+         JOIN companies c   ON c.id   = v.company_id
+         WHERE v.id = ?`,
+        [req.params.id]
+      ).then(([rows]) => {
+        if (!rows.length || !rows[0].visitor_email) return;
+        const r = rows[0];
+        sendVisitRejectionEmail({
+          visitorName:  r.visitor_name,
+          visitorEmail: r.visitor_email,
+          companyName:  r.company_name,
+          refNumber:    r.ref_number,
+          employeeName: r.emp_name,
+          serviceName:  r.service_name || r.purpose || null,
+          reason:       notes || null,
+        }).catch(e => console.error('[Rejection email error]', e.message));
+      }).catch(e => console.error('[Rejection email fetch error]', e.message));
+    }
+
     res.json({ message: 'Status updated' });
+    broadcast(visit.company_id);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -346,7 +385,7 @@ async function updateFieldValues(req, res) {
 async function listEligibleEmployees(req, res) {
   const { service_id } = req.query;
   try {
-    let sql = `SELECT e.id, e.name, e.designation
+    let sql = `SELECT e.id, e.name, e.designation, e.location
                FROM employees e
                WHERE e.company_id = ? AND e.status = 'active'`;
     const params = [req.user.company_id];
@@ -356,7 +395,7 @@ async function listEligibleEmployees(req, res) {
       params.push(service_id);
     }
 
-    sql += ' ORDER BY e.name';
+    sql += ' ORDER BY e.location, e.name';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (err) {
@@ -372,8 +411,12 @@ async function updateEmployee(req, res) {
     let visitSql = 'SELECT id, service_id FROM visits WHERE id = ? AND company_id = ?';
     const visitParams = [req.params.id, req.user.company_id];
     if (req.user.role === 'company_user') {
-      visitSql += ' AND employee_id = ?';
-      visitParams.push(req.user.employee_id);
+      // Allow if assigned to them OR (stages enabled AND) currently at a stage they own
+      visitSql += ` AND (employee_id = ? OR (
+        EXISTS(SELECT 1 FROM companies WHERE id = ? AND stages_enabled = 1)
+        AND current_stage_id IN (SELECT id FROM visit_stages WHERE employee_id = ? AND company_id = ?)
+      ))`;
+      visitParams.push(req.user.employee_id, req.user.company_id, req.user.employee_id, req.user.company_id);
     }
     const [visits] = await pool.query(visitSql, visitParams);
     if (!visits.length) return res.status(404).json({ message: 'Visit not found' });
@@ -562,4 +605,100 @@ async function myCharts(req, res) {
   }
 }
 
-module.exports = { list, getOne, updateStatus, updateFieldValues, listEligibleEmployees, updateEmployee, myCharts, promoteNextReady };
+async function getNotes(req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, author_name, note, created_at FROM visit_notes
+       WHERE visit_id = ? AND company_id = ? ORDER BY created_at ASC`,
+      [req.params.id, req.user.company_id]
+    );
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+}
+
+async function addNote(req, res) {
+  try {
+    const { note } = req.body;
+    if (!note?.trim()) return res.status(400).json({ message: 'Note cannot be empty' });
+    const [result] = await pool.query(
+      `INSERT INTO visit_notes (visit_id, company_id, user_id, author_name, note) VALUES (?, ?, ?, ?, ?)`,
+      [req.params.id, req.user.company_id, req.user.id, req.user.name, note.trim()]
+    );
+    res.json({ id: result.insertId, author_name: req.user.name, note: note.trim(), created_at: new Date() });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+}
+
+async function updateNextVisit(req, res) {
+  const { next_visit_date } = req.body;
+  try {
+    const date = next_visit_date ? new Date(next_visit_date) : null;
+    if (date && isNaN(date.getTime())) return res.status(400).json({ message: 'Invalid date' });
+    const [result] = await pool.query(
+      'UPDATE visits SET next_visit_date = ? WHERE id = ? AND company_id = ?',
+      [date ? date.toISOString().slice(0, 10) : null, req.params.id, req.user.company_id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'Visit not found' });
+    res.json({ success: true, next_visit_date: date ? date.toISOString().slice(0, 10) : null });
+  } catch (err) {
+    console.error('[updateNextVisit]', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET /visits/revisits/count — lightweight badge count for dashboard
+async function getRevisitsCount(req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT MAX(next_visit_date) AS next_visit_date
+       FROM visits WHERE company_id = ? AND next_visit_date IS NOT NULL
+       GROUP BY visitor_id`,
+      [req.user.company_id]
+    );
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const total   = rows.length;
+    const overdue = rows.filter(r => new Date(String(r.next_visit_date).slice(0, 10) + 'T12:00:00') < today).length;
+    res.json({ total, overdue });
+  } catch (err) {
+    console.error('[getRevisitsCount]', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET /visits/revisits — visitors with a scheduled next_visit_date
+async function getRevisits(req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT
+         nv.visitor_id,
+         vis.name        AS visitor_name,
+         vis.mobile,
+         nv.next_visit_date,
+         v.service_name,
+         emp.name        AS employee_name,
+         emp.designation,
+         v.visit_time    AS last_visit_time,
+         v.last_reminded_at
+       FROM (
+         SELECT visitor_id, MAX(next_visit_date) AS next_visit_date
+         FROM visits
+         WHERE company_id = ? AND next_visit_date IS NOT NULL
+         GROUP BY visitor_id
+       ) nv
+       JOIN visits v ON v.visitor_id = nv.visitor_id
+         AND v.next_visit_date = nv.next_visit_date
+         AND v.company_id = ?
+       JOIN visitors vis ON vis.id = nv.visitor_id AND vis.company_id = ?
+       LEFT JOIN employees emp ON emp.id = v.employee_id
+       GROUP BY nv.visitor_id, vis.name, vis.mobile, nv.next_visit_date,
+                v.service_name, emp.name, emp.designation, v.visit_time, v.last_reminded_at
+       ORDER BY nv.next_visit_date ASC`,
+      [req.user.company_id, req.user.company_id, req.user.company_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[getRevisits]', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { list, getOne, updateStatus, updateFieldValues, listEligibleEmployees, updateEmployee, myCharts, promoteNextReady, getNotes, addNote, updateNextVisit, getRevisits, getRevisitsCount };

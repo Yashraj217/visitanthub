@@ -9,6 +9,7 @@ const initial = {
 };
 
 export default function Register() {
+  const refCode = new URLSearchParams(window.location.search).get('ref') || '';
   const [form, setForm] = useState(initial);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -25,7 +26,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await api.post('/auth/register', form);
+      await api.post('/auth/register', { ...form, referral_code: refCode });
       setRegisteredEmail(form.admin_email);
       setSubmitted(true);
     } catch (err) {

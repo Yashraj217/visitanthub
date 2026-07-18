@@ -233,18 +233,31 @@ export default function Employees() {
                   <td className="px-6 py-4 text-gray-600">{e.designation || '—'}</td>
                   <td className="px-6 py-4 text-gray-600">{e.location || '—'}</td>
                   <td className="px-6 py-4">
-                    {e.service_names
-                      ? <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">{e.service_names}</span>
-                      : <span className="text-gray-300 text-xs italic">None</span>}
+                    {e.service_names ? (() => {
+                      const svcs = e.service_names.split(',').map(s => s.trim()).filter(Boolean);
+                      const visible = svcs.slice(0, 2);
+                      const extra = svcs.length - visible.length;
+                      return (
+                        <div className="flex flex-wrap gap-1">
+                          {visible.map(s => (
+                            <span key={s} className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 whitespace-nowrap">{s}</span>
+                          ))}
+                          {extra > 0 && (
+                            <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 whitespace-nowrap" title={svcs.slice(2).join(', ')}>+{extra} more</span>
+                          )}
+                        </div>
+                      );
+                    })() : <span className="text-gray-300 text-xs italic">None</span>}
                   </td>
                   <td className="px-6 py-4">
                     {e.user_id ? (
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
                         e.login_status === 'active'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-500'
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : 'bg-gray-100 text-gray-500 border border-gray-200'
                       }`}>
-                        {e.login_status === 'active' ? '● Active' : '○ Inactive'}
+                        <span className={`w-1.5 h-1.5 rounded-full ${e.login_status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        {e.login_status === 'active' ? 'Active' : 'Inactive'}
                       </span>
                     ) : (
                       <span className="text-gray-300 text-xs italic">No login</span>

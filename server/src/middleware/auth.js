@@ -6,10 +6,12 @@ const USER_TTL = 180; // 3 minutes — short enough that deactivation takes effe
 
 async function authenticate(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // EventSource cannot send headers — allow token via query param for SSE endpoints
+  const rawToken = (header && header.startsWith('Bearer ')) ? header.split(' ')[1] : req.query.token;
+  if (!rawToken) {
     return res.status(401).json({ message: 'Authentication required' });
   }
-  const token = header.split(' ')[1];
+  const token = rawToken;
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const cacheKey = `user:${decoded.id}`;
@@ -48,4 +50,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { authenticate, requireRole, cacheDel };
+module.exports = { authenticate, requireRole };

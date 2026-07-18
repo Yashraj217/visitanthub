@@ -22,6 +22,7 @@ import AssocDashboardScreen  from '../screens/associate/DashboardScreen';
 import AssocVisitsScreen     from '../screens/associate/VisitsScreen';
 import AssocVisitDetail      from '../screens/associate/VisitDetailScreen';
 import MyScheduleScreen      from '../screens/associate/MyScheduleScreen';
+import RevisitsScreen        from '../screens/RevisitsScreen';
 
 import VisitorHistoryScreen from '../screens/VisitorHistoryScreen';
 import MoreScreen from '../screens/MoreScreen';
@@ -52,6 +53,8 @@ function AdminTabs() {
         options={{ tabBarIcon: tabIcon('grid'), tabBarLabel: 'Dashboard' }} />
       <AdminTab.Screen name="Visits" component={AdminVisitsScreen}
         options={{ tabBarIcon: tabIcon('clipboard'), tabBarLabel: 'Visits' }} />
+      <AdminTab.Screen name="Revisits" component={RevisitsScreen}
+        options={{ tabBarIcon: tabIcon('refresh-circle'), tabBarLabel: 'Revisits' }} />
       <AdminTab.Screen name="Employees" component={AdminEmployeesScreen}
         options={{ tabBarIcon: tabIcon('people'), tabBarLabel: 'Associates' }} />
       <AdminTab.Screen name="More" component={MoreScreen}
@@ -74,6 +77,8 @@ function AssocTabs() {
         options={{ tabBarIcon: tabIcon('grid'), tabBarLabel: 'Dashboard' }} />
       <AssocTab.Screen name="MyVisits" component={AssocVisitsScreen}
         options={{ tabBarIcon: tabIcon('clipboard'), tabBarLabel: 'My Visits' }} />
+      <AssocTab.Screen name="Revisits" component={RevisitsScreen}
+        options={{ tabBarIcon: tabIcon('refresh-circle'), tabBarLabel: 'Revisits' }} />
       <AssocTab.Screen name="MySchedule" component={MyScheduleScreen}
         options={{ tabBarIcon: tabIcon('calendar'), tabBarLabel: 'Schedule' }} />
       <AssocTab.Screen name="More" component={MoreScreen}

@@ -11,16 +11,17 @@ const PLANS = [
     name: 'Starter',
     price: '₹0',
     period: '/month',
-    desc: 'Perfect for small offices getting started.',
+    desc: 'Free forever. Try it with real WhatsApp notifications from day one.',
     highlight: false,
     cta: 'Start for Free',
     ctaLink: '/register',
+    tokenNote: '200 free WhatsApp tokens included · Top-up from ₹499',
     features: [
       'Up to 500 visits / month',
       '1 associate',
       '1 service',
       'Visitor kiosk & QR check-in',
-      'WhatsApp notifications',
+      '200 free WhatsApp tokens',
       'Basic analytics',
       'Email support',
     ],
@@ -33,7 +34,7 @@ const PLANS = [
     ],
   },
   {
-    name: 'Professional',
+    name: 'Pro',
     price: '₹999',
     period: '/month',
     desc: 'For growing teams that need more power.',
@@ -41,10 +42,12 @@ const PLANS = [
     badge: 'Most Popular',
     cta: 'Start Free Trial',
     ctaLink: '/register',
+    tokenNote: '300 WhatsApp tokens included every month · Top-up anytime',
     features: [
       'Unlimited visits',
       'Up to 15 associates',
       'Up to 15 services',
+      '300 WhatsApp tokens / month',
       'TV display board',
       'Internal fields & notes',
       'Advanced analytics & export',
@@ -55,18 +58,23 @@ const PLANS = [
     missing: [],
   },
   {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    desc: 'Large organisations with unique needs.',
+    name: 'Gold',
+    price: '₹2,499',
+    period: '/month',
+    desc: 'Premium plan with WhatsApp tokens included every month.',
     highlight: false,
-    cta: 'Contact Sales',
-    ctaLink: '/contact',
+    gold: true,
+    badge: 'WhatsApp Included',
+    cta: 'Get Gold',
+    ctaLink: '/register',
+    tokenNote: '1,000 WhatsApp tokens included every month',
     features: [
-      'Everything in Professional',
-      'Unlimited associates',
+      'Everything in Pro',
+      'Unlimited associates & services',
+      '1,000 WhatsApp tokens / month',
+      'Tokens auto-renewed monthly',
       'Multi-branch support',
-      'Dedicated onboarding',
+      'Dedicated account manager',
       'SLA-backed support',
       'Custom integrations',
       'On-premise option',
@@ -78,15 +86,19 @@ const PLANS = [
 const FAQS = [
   {
     q: 'Is there a free trial?',
-    a: 'Yes — the Starter plan is free forever with no credit card required. The Professional plan also comes with a 14-day free trial so you can test every feature before committing.',
+    a: 'Yes — the Starter plan is free forever with no credit card required and includes 200 WhatsApp tokens to get you started. The Pro plan also comes with a 14-day free trial so you can test every feature before committing.',
+  },
+  {
+    q: 'How do WhatsApp tokens work?',
+    a: 'Each WhatsApp message sent (check-in confirmation, visit approval, booking confirmation) deducts 1 token. Starter users get 200 free tokens and can top-up from ₹499 anytime. Pro users top-up as needed. Gold users get 1,000 tokens included every month — automatically renewed.',
   },
   {
     q: 'Can I upgrade or downgrade at any time?',
-    a: 'Absolutely. You can upgrade from Starter to Professional at any point from your dashboard. Downgrades take effect at the end of your current billing cycle. No penalties, no lock-in.',
+    a: 'Absolutely. You can upgrade from Starter to Pro or Gold at any point from your dashboard. Downgrades take effect at the end of your current billing cycle. No penalties, no lock-in.',
   },
   {
     q: 'Do you charge per visitor?',
-    a: 'No. The Starter plan has a monthly visit cap of 500. Professional and Enterprise plans have unlimited visits — you pay a flat monthly fee regardless of how many visitors walk in.',
+    a: 'No. The Starter plan has a monthly visit cap of 500. Pro and Gold plans have unlimited visits — you pay a flat monthly fee regardless of how many visitors walk in.',
   },
   {
     q: 'Is my data secure?',
@@ -173,45 +185,65 @@ export default function Pricing() {
                 className={`relative rounded-2xl p-8 flex flex-col ${
                   plan.highlight
                     ? 'text-white shadow-2xl shadow-indigo-200'
+                    : plan.gold
+                    ? 'text-white shadow-2xl shadow-amber-200'
                     : 'bg-gray-50 border border-gray-200'
                 }`}
-                style={plan.highlight ? { background: 'linear-gradient(145deg, #4f46e5, #7c3aed)' } : {}}
+                style={
+                  plan.highlight ? { background: 'linear-gradient(145deg, #4f46e5, #7c3aed)' }
+                  : plan.gold    ? { background: 'linear-gradient(145deg, #92400e, #b45309)' }
+                  : {}
+                }
               >
                 {plan.badge && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-900 text-xs font-bold px-4 py-1 rounded-full shadow">
+                  <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-xs font-bold px-4 py-1 rounded-full shadow ${
+                    plan.gold ? 'bg-amber-400 text-amber-900' : 'bg-amber-400 text-amber-900'
+                  }`}>
                     {plan.badge}
                   </div>
                 )}
 
-                <div className="mb-6">
-                  <h3 className={`text-lg font-bold mb-1 ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
+                <div className="mb-5">
+                  <h3 className={`text-lg font-bold mb-1 ${plan.highlight || plan.gold ? 'text-white' : 'text-gray-900'}`}>
                     {plan.name}
                   </h3>
-                  <p className={`text-sm mb-4 ${plan.highlight ? 'text-indigo-200' : 'text-gray-500'}`}>
+                  <p className={`text-sm mb-4 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-200' : 'text-gray-500'}`}>
                     {plan.desc}
                   </p>
                   <div className="flex items-end gap-1">
-                    <span className={`text-4xl font-extrabold ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
+                    <span className={`text-4xl font-extrabold ${plan.highlight || plan.gold ? 'text-white' : 'text-gray-900'}`}>
                       {plan.price}
                     </span>
                     {plan.period && (
-                      <span className={`text-sm mb-1.5 ${plan.highlight ? 'text-indigo-200' : 'text-gray-400'}`}>
+                      <span className={`text-sm mb-1.5 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-200' : 'text-gray-400'}`}>
                         {plan.period}
                       </span>
                     )}
                   </div>
                 </div>
 
+                {/* WhatsApp token note */}
+                {plan.tokenNote && (
+                  <div className={`text-xs font-medium px-3 py-2 rounded-lg mb-5 flex items-center gap-1.5 ${
+                    plan.highlight ? 'bg-indigo-800/50 text-indigo-200'
+                    : plan.gold    ? 'bg-amber-900/40 text-amber-200'
+                    : 'bg-green-50 text-green-700 border border-green-200'
+                  }`}>
+                    <span>💬</span>
+                    {plan.tokenNote}
+                  </div>
+                )}
+
                 <ul className="space-y-2.5 flex-1 mb-8">
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2.5 text-sm">
                       <svg
-                        className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlight ? 'text-indigo-200' : 'text-green-500'}`}
+                        className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-300' : 'text-green-500'}`}
                         fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                      <span className={plan.highlight ? 'text-indigo-100' : 'text-gray-600'}>{f}</span>
+                      <span className={plan.highlight ? 'text-indigo-100' : plan.gold ? 'text-amber-100' : 'text-gray-600'}>{f}</span>
                     </li>
                   ))}
                   {plan.missing.map(f => (
@@ -232,11 +264,11 @@ export default function Pricing() {
                   className={`block text-center py-3 rounded-xl font-semibold text-sm transition-all ${
                     plan.highlight
                       ? 'bg-white text-indigo-700 hover:bg-indigo-50'
-                      : plan.name === 'Enterprise'
-                      ? 'border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50'
+                      : plan.gold
+                      ? 'bg-amber-400 text-amber-900 hover:bg-amber-300'
                       : 'text-white hover:opacity-90'
                   }`}
-                  style={!plan.highlight && plan.name !== 'Enterprise' ? { background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' } : {}}
+                  style={!plan.highlight && !plan.gold ? { background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' } : {}}
                 >
                   {plan.cta}
                 </Link>

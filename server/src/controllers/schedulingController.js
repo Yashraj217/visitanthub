@@ -1,5 +1,7 @@
 const { pool } = require('../config/database');
 const { sendApprovalNotification, sendBookingConfirmation } = require('../services/whatsapp');
+const { sendBookingConfirmationEmail, sendBookingCancellationEmail } = require('../services/email');
+const { sendExpoPush } = require('../services/pushNotification');
 const { cacheGet, cacheSet } = require('../config/redis');
 
 // Generate a unique booking reference
@@ -218,10 +220,10 @@ async function createBooking(req, res) {
       message: 'Booking request submitted. You will be notified once confirmed.',
     });
 
-    // Send WhatsApp confirmation to visitor (fire-and-forget, after response)
+    // Send WhatsApp + email confirmations to visitor (fire-and-forget, after response)
     try {
       const [[co]] = await pool.query(
-        'SELECT name, whatsapp_provider, whatsapp_api_key, whatsapp_from FROM companies WHERE id = ?',
+        'SELECT id, name, whatsapp_provider, whatsapp_api_key, whatsapp_from, notif_booking_confirmed, whatsapp_tokens FROM companies WHERE id = ?',
         [company.id]
       );
       let employeeName = null;
@@ -241,6 +243,18 @@ async function createBooking(req, res) {
           service_name:   service_name || null,
         },
       });
+      if (visitor_email) {
+        sendBookingConfirmationEmail({
+          visitorName:   visitor_name.trim(),
+          visitorEmail:  visitor_email,
+          companyName:   co.name,
+          bookingRef:    booking_ref,
+          scheduledDate: scheduled_date,
+          scheduledTime: scheduled_time,
+          employeeName:  employeeName,
+          serviceName:   service_name || null,
+        }).catch(e => console.error('[Email booking confirmation error]', e.message));
+      }
     } catch (waErr) {
       console.error('[WhatsApp booking confirmation error]', waErr.message);
     }
@@ -316,7 +330,8 @@ async function updateBookingStatus(req, res) {
   try {
     const [[booking]] = await pool.query(
       `SELECT sv.*, emp.name AS emp_name, emp.designation, emp.location, emp.phone AS emp_phone,
-              c.name AS company_name, c.whatsapp_provider, c.whatsapp_api_key, c.whatsapp_from
+              c.id AS company_id, c.name AS company_name, c.whatsapp_provider, c.whatsapp_api_key, c.whatsapp_from,
+              c.notif_visit_approved, c.notif_booking_confirmed, c.whatsapp_tokens
        FROM scheduled_visits sv
        LEFT JOIN employees emp ON emp.id = sv.employee_id
        JOIN companies c ON c.id = sv.company_id
@@ -332,8 +347,9 @@ async function updateBookingStatus(req, res) {
 
     // Notify visitor via WhatsApp if confirmed
     if (status === 'confirmed' && booking.visitor_mobile) {
-      const company  = { name: booking.company_name, whatsapp_provider: booking.whatsapp_provider,
-                         whatsapp_api_key: booking.whatsapp_api_key, whatsapp_from: booking.whatsapp_from };
+      const company  = { id: booking.company_id, name: booking.company_name, whatsapp_provider: booking.whatsapp_provider,
+                         whatsapp_api_key: booking.whatsapp_api_key, whatsapp_from: booking.whatsapp_from,
+                         notif_visit_approved: booking.notif_visit_approved, whatsapp_tokens: booking.whatsapp_tokens };
       const employee = { name: booking.emp_name || 'the associate', designation: booking.designation,
                          location: booking.location };
       const visit    = { service_name: booking.service_name, purpose: booking.purpose,
@@ -343,6 +359,58 @@ async function updateBookingStatus(req, res) {
 
       sendApprovalNotification({ company, employee, visitor, visit })
         .catch(e => console.error('[Scheduling WhatsApp error]', e.message));
+    }
+
+    // ── Send confirmation email to visitor when admin approves ───────────
+    if (status === 'confirmed' && booking.visitor_email) {
+      sendBookingConfirmationEmail({
+        visitorName:   booking.visitor_name,
+        visitorEmail:  booking.visitor_email,
+        companyName:   booking.company_name,
+        bookingRef:    booking.booking_ref,
+        scheduledDate: booking.scheduled_date,
+        scheduledTime: String(booking.scheduled_time).slice(0, 5),
+        employeeName:  booking.emp_name || null,
+        serviceName:   booking.service_name || null,
+      }).catch(e => console.error('[Confirmation email error]', e.message));
+    }
+
+    // ── Push notification to associate when their booking is confirmed ────
+    if (status === 'confirmed' && booking.employee_id) {
+      pool.query(
+        `SELECT push_token FROM users WHERE employee_id = ? AND push_token IS NOT NULL LIMIT 1`,
+        [booking.employee_id]
+      ).then(([[row]]) => {
+        if (!row?.push_token) return;
+        function fmt12(t) {
+          if (!t) return '';
+          const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+          return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+        }
+        const dateStr = String(booking.scheduled_date).slice(0, 10);
+        const timeStr = fmt12(booking.scheduled_time);
+        sendExpoPush({
+          token: row.push_token,
+          title: 'New Appointment Booked',
+          body:  `${booking.visitor_name} — ${dateStr} at ${timeStr}`,
+          data:  { screen: 'Schedule' },
+        });
+      }).catch(() => {});
+    }
+
+    // ── Send cancellation email to visitor (non-blocking) ────────────────
+    if (status === 'cancelled' && booking.visitor_email) {
+      sendBookingCancellationEmail({
+        visitorName:   booking.visitor_name,
+        visitorEmail:  booking.visitor_email,
+        companyName:   booking.company_name,
+        bookingRef:    booking.booking_ref,
+        scheduledDate: booking.scheduled_date,
+        scheduledTime: booking.scheduled_time,
+        employeeName:  booking.emp_name || null,
+        serviceName:   booking.service_name || booking.purpose || null,
+        adminNotes:    admin_notes || null,
+      }).catch(e => console.error('[Cancellation email error]', e.message));
     }
 
     res.json({ message: 'Booking updated' });

@@ -224,7 +224,7 @@ const s = StyleSheet.create({
   root:          { flex: 1, backgroundColor: COLORS.background },
   scroll:        { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoBox:       { alignItems: 'center', marginBottom: 32 },
-  logoIcon:      { width: 84, height: 84, borderRadius: 20, marginBottom: 12 },
+  logoIcon:      { width: 52, height: 52, borderRadius: 12, marginBottom: 12 },
   appName:       { fontSize: 26, fontFamily: FONTS.bold, color: COLORS.text },
   tagline:       { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textMuted, marginTop: 4 },
   card:          { backgroundColor: COLORS.card, borderRadius: 16, padding: 24,

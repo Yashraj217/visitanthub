@@ -25,7 +25,7 @@ const JSON_LD = {
       name: 'VisitantHub',
       operatingSystem: 'Web, Android',
       applicationCategory: 'BusinessApplication',
-      description: 'Cloud-based visitor management system for clinics, offices, and enterprises. Digital check-in, appointment scheduling, WhatsApp notifications, and live display board.',
+      description: 'VisitantHub is a cloud-based Clinic Management Software and Visitor Management Software for hospitals, clinics, and offices. Features include digital patient check-in, doctor-wise queuing, appointment scheduling, WhatsApp patient reminders, revisit tracking, live TV display board, and real-time analytics.',
       offers: {
         '@type': 'Offer',
         price: '999',
@@ -43,43 +43,43 @@ const JSON_LD = {
 const FEATURES = [
   {
     icon: '📱',
-    title: 'Smart Visitor Kiosk',
-    desc: 'Visitors self-check in from any device — phone, tablet, or kiosk. No app download, no paper forms.',
+    title: 'Smart Patient / Visitor Kiosk',
+    desc: 'Patients and visitors self-check in from any device — phone, tablet, or kiosk. No app download, no paper forms.',
+  },
+  {
+    icon: '📅',
+    title: 'Appointment Scheduling',
+    desc: 'Let patients book slots online with doctor and service selection. Auto-confirm via WhatsApp and reduce no-shows.',
+  },
+  {
+    icon: '🔁',
+    title: 'Patient Revisit Reminders',
+    desc: 'Set a next visit date per patient and send automated WhatsApp reminders — keeping patients engaged between visits.',
   },
   {
     icon: '📺',
     title: 'Live TV Display Board',
-    desc: 'Show a real-time queue on your office TV screen, grouped by service. Includes a QR code slide so walk-ins can register on the spot.',
+    desc: 'Show a real-time queue on your clinic or office TV screen, grouped by doctor or service. Includes a QR code slide for walk-ins.',
   },
   {
     icon: '💬',
     title: 'Instant WhatsApp Alerts',
-    desc: 'Associates get a WhatsApp notification the moment a visitor checks in — no more missed arrivals.',
+    desc: 'Doctors and associates get a WhatsApp notification the moment a patient checks in — no more missed arrivals.',
   },
   {
     icon: '🗂️',
-    title: 'Service-Based Queuing',
-    desc: 'Route visitors to the right associate by service. Each service has its own queue, custom fields, and branding.',
+    title: 'Doctor / Service-Based Queuing',
+    desc: 'Route patients to the right doctor or department. Each service has its own queue, custom fields, and branding.',
   },
   {
     icon: '📊',
     title: 'Real-Time Analytics',
-    desc: 'Track visit trends by day, week, month, quarter, or custom range. Drill down by service with interactive charts.',
-  },
-  {
-    icon: '🎨',
-    title: 'Custom Branding',
-    desc: 'Upload your logo, choose your sidebar colour, and set a unique kiosk URL. Visitors see your brand at every touchpoint.',
-  },
-  {
-    icon: '🔒',
-    title: 'Role-Based Access',
-    desc: 'Super Admin, Company Admin, and Associate roles. Each sees only what they need — nothing more.',
+    desc: 'Track visit trends by day, week, month, quarter, or custom range. Drill down by doctor or service with interactive charts.',
   },
   {
     icon: '📋',
-    title: 'Internal Fields & Notes',
-    desc: 'Staff can capture hidden internal fields per visit — account numbers, case IDs, amounts — invisible to visitors.',
+    title: 'Internal Fields & Clinical Notes',
+    desc: 'Staff can capture hidden internal fields per visit — diagnosis codes, prescription IDs, case notes — invisible to patients.',
   },
   {
     icon: '🖨️',
@@ -90,18 +90,18 @@ const FEATURES = [
 
 const INDUSTRIES = [
   {
+    icon: '🏥',
+    photo: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=600&q=80',
+    title: 'Hospitals & Clinics',
+    desc: 'Route patients to the right doctor or department. Schedule appointments, send revisit reminders, and reduce waiting-room confusion with a live TV queue.',
+    tags: ['Hospitals', 'Clinics', 'Diagnostic Labs', 'Physiotherapy', 'Dermatology', 'Dental'],
+  },
+  {
     icon: '🏦',
     photo: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=600&q=80',
     title: 'Banks & Financial Services',
     desc: 'Manage account-opening, loan, and advisory queues across multiple counters — with token numbers on the display board.',
     tags: ['Banks', 'NBFCs', 'Insurance', 'Mutual Funds'],
-  },
-  {
-    icon: '🏥',
-    photo: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=600&q=80',
-    title: 'Hospitals & Clinics',
-    desc: 'Route patients to the right doctor or department. Reduce waiting-room confusion with a live TV queue.',
-    tags: ['Hospitals', 'Clinics', 'Diagnostic Labs', 'Physiotherapy'],
   },
   {
     icon: '🏛️',
@@ -182,25 +182,27 @@ const PLANS = [
     name: 'Starter',
     price: '₹0',
     period: '/month',
-    desc: 'Perfect for small offices getting started.',
+    desc: 'Free forever. Includes 200 WhatsApp tokens to get started.',
     highlight: false,
+    tokenNote: '200 free tokens · Top-up from ₹499',
     features: [
       'Up to 500 visits / month',
-      '1 associates',
+      '1 associate',
       '1 service',
       'Visitor kiosk & QR check-in',
-      'WhatsApp notifications',
+      '200 free WhatsApp tokens',
       'Basic analytics',
       'Email support',
     ],
   },
   {
-    name: 'Professional',
+    name: 'Pro',
     price: '₹999',
     period: '/month',
     desc: 'For growing teams that need more power.',
     highlight: true,
     badge: 'Most Popular',
+    tokenNote: '300 WhatsApp tokens / month included',
     features: [
       'Unlimited visits',
       '15 associates',
@@ -213,19 +215,22 @@ const PLANS = [
     ],
   },
   {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    desc: 'Large organisations with unique needs.',
+    name: 'Gold',
+    price: '₹2,499',
+    period: '/month',
+    desc: 'Premium plan with WhatsApp tokens included monthly.',
     highlight: false,
+    gold: true,
+    badge: 'WhatsApp Included',
+    tokenNote: '1,000 WhatsApp tokens / month included',
     features: [
-      'Everything in Professional',
-      'Unlimited associates',
+      'Everything in Pro',
+      'Unlimited associates & services',
+      '1,000 WhatsApp tokens / month',
       'Multi-branch support',
-      'Dedicated onboarding',
+      'Dedicated account manager',
       'SLA-backed support',
       'Custom integrations',
-      'On-premise option',
     ],
   },
 ];
@@ -416,7 +421,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 font-sans">
       <Seo
         path="/"
-        description="VisitantHub is a smart visitor management system for clinics, offices, and enterprises. Digital check-in, appointment scheduling, WhatsApp notifications, live display board, and real-time analytics."
+        description="VisitantHub is a Clinic Management Software and Visitor Management Software for hospitals, clinics, and offices. Features include digital patient check-in, doctor queuing, appointment scheduling, WhatsApp reminders, revisit tracking, and live TV display boards."
         jsonLd={JSON_LD}
       />
 
@@ -437,22 +442,27 @@ export default function LandingPage() {
 
             {/* ── Left: text + CTAs ── */}
             <div ref={heroRef} className="fade-up">
-              <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 border border-indigo-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Trusted by offices across India
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 text-xs font-semibold px-4 py-1.5 rounded-full border border-indigo-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Clinic Management Software
+                </span>
+                <span className="inline-flex items-center gap-2 bg-violet-50 text-violet-600 text-xs font-semibold px-4 py-1.5 rounded-full border border-violet-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                  Visitor Management Software
+                </span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight mb-6">
-                Visitor Management<br />
+                Clinic & Visitor<br />
                 <span className="text-transparent bg-clip-text"
                   style={{ backgroundImage: 'linear-gradient(90deg, #4f46e5, #7c3aed)' }}>
-                  Made Effortless
+                  Management, Simplified
                 </span>
               </h1>
 
               <p className="text-gray-500 text-lg max-w-xl mb-10 leading-relaxed">
-                VisitantHub streamlines every visitor touchpoint — from self-check-in kiosks and live queue boards
-                to instant WhatsApp alerts and deep analytics.
+                VisitantHub is the all-in-one platform for clinics, hospitals, and offices — patient check-in, doctor queuing, appointment scheduling, WhatsApp reminders, revisit tracking, and live display boards.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-12">
@@ -498,9 +508,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div ref={featuresRef} className="fade-up text-center mb-16">
             <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Features</p>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Everything your office needs</h2>
+            <h2 className="text-4xl font-extrabold text-gray-900 mb-4 leading-tight">Everything your clinic or office needs</h2>
             <p className="text-gray-500 text-lg leading-relaxed max-w-2xl mx-auto">
-              From the first visitor scan to the end-of-day report — VisitantHub handles it all.
+              From patient check-in to revisit reminders — VisitantHub handles it all.
             </p>
           </div>
 
@@ -690,9 +700,15 @@ export default function LandingPage() {
                 className={`relative rounded-2xl p-8 flex flex-col ${
                   plan.highlight
                     ? 'text-white shadow-2xl shadow-indigo-200'
+                    : plan.gold
+                    ? 'text-white shadow-2xl shadow-amber-200'
                     : 'bg-gray-50 border border-gray-200'
                 }`}
-                style={plan.highlight ? { background: 'linear-gradient(145deg, #4f46e5, #7c3aed)' } : {}}>
+                style={
+                  plan.highlight ? { background: 'linear-gradient(145deg, #4f46e5, #7c3aed)' }
+                  : plan.gold    ? { background: 'linear-gradient(145deg, #92400e, #b45309)' }
+                  : {}
+                }>
 
                 {plan.badge && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-900 text-xs font-bold px-4 py-1 rounded-full shadow">
@@ -700,46 +716,45 @@ export default function LandingPage() {
                   </div>
                 )}
 
-                <div className="mb-6">
-                  <h3 className={`text-lg font-bold mb-1 ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>{plan.name}</h3>
-                  <p className={`text-sm mb-4 ${plan.highlight ? 'text-indigo-200' : 'text-gray-500'}`}>{plan.desc}</p>
+                <div className="mb-5">
+                  <h3 className={`text-lg font-bold mb-1 ${plan.highlight || plan.gold ? 'text-white' : 'text-gray-900'}`}>{plan.name}</h3>
+                  <p className={`text-sm mb-4 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-200' : 'text-gray-500'}`}>{plan.desc}</p>
                   <div className="flex items-end gap-1">
-                    <span className={`text-4xl font-extrabold ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>{plan.price}</span>
-                    {plan.period && <span className={`text-sm mb-1.5 ${plan.highlight ? 'text-indigo-200' : 'text-gray-400'}`}>{plan.period}</span>}
+                    <span className={`text-4xl font-extrabold ${plan.highlight || plan.gold ? 'text-white' : 'text-gray-900'}`}>{plan.price}</span>
+                    {plan.period && <span className={`text-sm mb-1.5 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-200' : 'text-gray-400'}`}>{plan.period}</span>}
                   </div>
                 </div>
+
+                {plan.tokenNote && (
+                  <div className={`text-xs font-medium px-3 py-2 rounded-lg mb-5 flex items-center gap-1.5 ${
+                    plan.highlight ? 'bg-indigo-800/50 text-indigo-200'
+                    : plan.gold    ? 'bg-amber-900/40 text-amber-200'
+                    : 'bg-green-50 text-green-700 border border-green-200'
+                  }`}>
+                    <span>💬</span>{plan.tokenNote}
+                  </div>
+                )}
 
                 <ul className="space-y-3 flex-1 mb-8">
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2.5 text-sm">
-                      <svg className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlight ? 'text-indigo-200' : 'text-green-500'}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <svg className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlight ? 'text-indigo-200' : plan.gold ? 'text-amber-300' : 'text-green-500'}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                      <span className={plan.highlight ? 'text-indigo-100' : 'text-gray-600'}>{f}</span>
+                      <span className={plan.highlight ? 'text-indigo-100' : plan.gold ? 'text-amber-100' : 'text-gray-600'}>{f}</span>
                     </li>
                   ))}
                 </ul>
 
-                {plan.name === 'Enterprise' ? (
-                  <a href="#contact" onClick={e => { e.preventDefault(); scrollTo('contact'); }}
-                    className={`block text-center py-3 rounded-xl font-semibold text-sm transition-all border-2 ${
-                      plan.highlight
-                        ? 'bg-white text-indigo-700 hover:bg-indigo-50 border-white'
-                        : 'border-indigo-600 text-indigo-600 hover:bg-indigo-50'
-                    }`}>
-                    Contact Sales
-                  </a>
-                ) : (
-                  <Link to="/register"
-                    className={`block text-center py-3 rounded-xl font-semibold text-sm transition-all ${
-                      plan.highlight
-                        ? 'bg-white text-indigo-700 hover:bg-indigo-50'
-                        : 'text-white hover:opacity-90'
-                    }`}
-                    style={!plan.highlight ? { background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' } : {}}>
-                    Start Free Trial
-                  </Link>
-                )}
+                <Link to="/register"
+                  className={`block text-center py-3 rounded-xl font-semibold text-sm transition-all ${
+                    plan.highlight ? 'bg-white text-indigo-700 hover:bg-indigo-50'
+                    : plan.gold   ? 'bg-amber-400 text-amber-900 hover:bg-amber-300'
+                    : 'text-white hover:opacity-90'
+                  }`}
+                  style={!plan.highlight && !plan.gold ? { background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' } : {}}>
+                  {plan.highlight ? 'Start Free Trial' : plan.gold ? 'Get Gold' : 'Start for Free'}
+                </Link>
               </div>
             ))}
           </div>
@@ -785,8 +800,8 @@ export default function LandingPage() {
               {
                 icon: '📧',
                 label: 'Email',
-                value: 'info@sonnetinfotech.com',
-                href: 'mailto:info@sonnetinfotech.com',
+                value: 'info@visitanthub.com',
+                href: 'mailto:info@visitanthub.com',
               },
               {
                 icon: '📞',
@@ -841,7 +856,7 @@ export default function LandingPage() {
             {/* Download button */}
             <div className="shrink-0">
               <a
-                href="https://visitor.sonnetinfotech.com/VisitantHub-Visitor.apk"
+                href="https://visitanthub.com/VisitantHub-Visitor.apk"
                 download="VisitantHub-Visitor.apk"
                 className="inline-flex items-center gap-3 bg-white text-indigo-700 font-bold px-7 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all text-sm"
               >

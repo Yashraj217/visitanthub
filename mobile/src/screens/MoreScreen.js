@@ -7,6 +7,7 @@ import { SafeAreaView }         from 'react-native-safe-area-context';
 import { Ionicons }             from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore         from 'expo-secure-store';
+import * as Updates             from 'expo-updates';
 import { useAuth }              from '../context/AuthContext';
 import { COLORS }               from '../constants/colors';
 import { FONTS }                from '../constants/fonts';
@@ -16,13 +17,16 @@ const BIO_ENABLED_KEY  = 'biometric_enabled';
 const BIO_EMAIL_KEY    = 'biometric_email';
 const BIO_PASSWORD_KEY = 'biometric_password';
 
-function MenuItem({ icon, label, value, onPress, danger, right }) {
+function MenuItem({ icon, label, sub, value, onPress, danger, right, iconBg, iconColor }) {
   return (
     <TouchableOpacity style={s.menuItem} onPress={onPress} activeOpacity={onPress ? 0.7 : 1}>
-      <View style={[s.menuIcon, { backgroundColor: danger ? '#fef2f2' : '#eff0ff' }]}>
-        <Ionicons name={icon} size={20} color={danger ? COLORS.danger : COLORS.primary} />
+      <View style={[s.menuIcon, { backgroundColor: iconBg || (danger ? '#fef2f2' : '#eff0ff') }]}>
+        <Ionicons name={icon} size={20} color={iconColor || (danger ? COLORS.danger : COLORS.primary)} />
       </View>
-      <Text style={[s.menuLabel, danger && { color: COLORS.danger }]}>{label}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[s.menuLabel, danger && { color: COLORS.danger }]}>{label}</Text>
+        {sub ? <Text style={s.menuSub}>{sub}</Text> : null}
+      </View>
       {right ?? <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />}
     </TouchableOpacity>
   );
@@ -30,6 +34,7 @@ function MenuItem({ icon, label, value, onPress, danger, right }) {
 
 export default function MoreScreen() {
   const { user, logout } = useAuth();
+  const isAdmin = user?.role === 'company_admin';
 
   // Password change
   const [showPwd, setShowPwd] = useState(false);
@@ -45,6 +50,12 @@ export default function MoreScreen() {
   const [bioPassword,   setBioPassword]   = useState('');
   const [bioSaving,     setBioSaving]     = useState(false);
 
+  // Company settings (admin only)
+  const [stagesEnabled,   setStagesEnabled]   = useState(false);
+  const [waitingEnabled,  setWaitingEnabled]  = useState(false);
+  const [togglingStages,  setTogglingStages]  = useState(false);
+  const [togglingWaiting, setTogglingWaiting] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -58,6 +69,17 @@ export default function MoreScreen() {
       } catch {}
     })();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    Promise.all([
+      api.get('/stages/enabled'),
+      api.get('/stages/waiting-status'),
+    ]).then(([s, w]) => {
+      setStagesEnabled(!!s.data.enabled);
+      setWaitingEnabled(!!w.data.enabled);
+    }).catch(() => {});
+  }, [isAdmin]);
 
   function handleLogout() {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -123,6 +145,29 @@ export default function MoreScreen() {
     } finally { setBioSaving(false); }
   }
 
+  async function toggleStages(val) {
+    setTogglingStages(true);
+    try {
+      await api.put('/stages/enabled', { enabled: val });
+      setStagesEnabled(val);
+      if (!val) setWaitingEnabled(false);
+    } catch {
+      Alert.alert('Error', 'Failed to update setting.');
+    } finally { setTogglingStages(false); }
+  }
+
+  async function toggleWaiting(val) {
+    setTogglingWaiting(true);
+    try {
+      await api.put('/stages/waiting-status', { enabled: val });
+      setWaitingEnabled(val);
+    } catch {
+      Alert.alert('Error', 'Failed to update setting.');
+    } finally { setTogglingWaiting(false); }
+  }
+
+  const appVersion = Updates.runtimeVersion || '1.0.0';
+
   return (
     <SafeAreaView style={s.root} edges={['top']}>
     <ScrollView contentContainerStyle={s.content}>
@@ -142,6 +187,52 @@ export default function MoreScreen() {
           </View>
         </View>
       </View>
+
+      {/* Company settings — admin only */}
+      {isAdmin && (
+        <>
+          <Text style={s.sectionTitle}>Company Settings</Text>
+          <View style={s.section}>
+            <View style={s.menuItem}>
+              <View style={[s.menuIcon, { backgroundColor: '#eff0ff' }]}>
+                <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.menuLabel}>Stage Tracking</Text>
+                <Text style={s.menuSub}>Move visitors through departments</Text>
+              </View>
+              <Switch
+                value={stagesEnabled}
+                disabled={togglingStages}
+                onValueChange={toggleStages}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {stagesEnabled && (
+              <View style={[s.menuItem, { borderBottomWidth: 0 }]}>
+                <View style={[s.menuIcon, { backgroundColor: '#fffbeb' }]}>
+                  <Ionicons name="time-outline" size={20} color="#d97706" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.menuLabel}>Waiting Status</Text>
+                  <Text style={s.menuSub}>Associates can mark visitors as waiting</Text>
+                </View>
+                <Switch
+                  value={waitingEnabled}
+                  disabled={togglingWaiting}
+                  onValueChange={toggleWaiting}
+                  trackColor={{ false: COLORS.border, true: '#f59e0b' }}
+                  thumbColor="#fff"
+                />
+              </View>
+            )}
+
+            {!stagesEnabled && <View style={{ height: 0 }} />}
+          </View>
+        </>
+      )}
 
       <Text style={s.sectionTitle}>Account</Text>
       <View style={s.section}>
@@ -168,14 +259,20 @@ export default function MoreScreen() {
           <View style={[s.menuIcon, { backgroundColor: '#f0fdf4' }]}>
             <Ionicons name="information-circle-outline" size={20} color={COLORS.success} />
           </View>
-          <Text style={s.menuLabel}>Version</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: 14 }}>1.0.0</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.menuLabel}>Version</Text>
+            <Text style={s.menuSub}>VisitantHub</Text>
+          </View>
+          <Text style={{ color: COLORS.textMuted, fontSize: 14, fontFamily: FONTS.semiBold }}>{appVersion}</Text>
         </View>
         <View style={[s.menuItem, { borderBottomWidth: 0 }]}>
           <View style={[s.menuIcon, { backgroundColor: '#f0fdf4' }]}>
             <Ionicons name="business-outline" size={20} color={COLORS.success} />
           </View>
-          <Text style={s.menuLabel}>{user?.company_name}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.menuLabel}>{user?.company_name}</Text>
+            <Text style={s.menuSub}>Your organisation</Text>
+          </View>
         </View>
       </View>
 
@@ -268,7 +365,8 @@ const s = StyleSheet.create({
   menuItem:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
                  borderBottomWidth: 1, borderBottomColor: COLORS.border },
   menuIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  menuLabel:   { flex: 1, fontSize: 15, fontFamily: FONTS.semiBold, color: COLORS.text },
+  menuLabel:   { fontSize: 15, fontFamily: FONTS.semiBold, color: COLORS.text },
+  menuSub:     { fontSize: 12, fontFamily: FONTS.regular, color: COLORS.textMuted, marginTop: 1 },
   modal:       { flex: 1, backgroundColor: COLORS.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                  padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border,

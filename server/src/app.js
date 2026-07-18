@@ -2,8 +2,19 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { testConnection } = require('./config/database');
+const { testConnection, pool } = require('./config/database');
 const { autoCheckInAll } = require('./services/autoCheckIn');
+const { startAppointmentReminder } = require('./services/appointmentReminder');
+
+async function expireOldPlans() {
+  try {
+    await pool.query(
+      "UPDATE companies SET plan = 'starter' WHERE plan != 'starter' AND plan_expires_at IS NOT NULL AND plan_expires_at < NOW()"
+    );
+  } catch (err) {
+    console.error('[expireOldPlans]', err.message);
+  }
+}
 
 const app = express();
 
@@ -29,8 +40,17 @@ app.use('/api/designations', require('./routes/designations'));
 app.use('/api/display',     require('./routes/display'));
 app.use('/api/scheduling',  require('./routes/scheduling'));
 app.use('/api/stages',      require('./routes/stages'));
+app.use('/api/billing',     require('./routes/billing'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+
+// APK download
+app.get('/apk', (_, res) => {
+  res.download(
+    path.join(__dirname, '../VisitantHub-Visitor.apk'),
+    'VisitantHub.apk'
+  );
+});
 
 // Serve React build in production; 404 JSON in development
 if (process.env.NODE_ENV === 'production') {
@@ -61,4 +81,10 @@ testConnection().then(() => {
   // Run auto check-in once at startup, then every 5 minutes
   autoCheckInAll().catch(console.error);
   setInterval(() => autoCheckInAll().catch(console.error), 5 * 60 * 1000);
+
+  // Expire paid plans that have passed their expiry date (checked hourly)
+  expireOldPlans().catch(console.error);
+  setInterval(() => expireOldPlans().catch(console.error), 60 * 60 * 1000);
+
+  startAppointmentReminder();
 });

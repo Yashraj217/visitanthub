@@ -21,8 +21,8 @@ function byTime(a, b, asc) {
   return asc ? (ta > tb ? 1 : ta < tb ? -1 : 0) : (ta > tb ? -1 : ta < tb ? 1 : 0);
 }
 
-const STATUS_FILTERS = ['all', 'pending', 'approved', 'completed'];
-const STATUS_LABELS  = { all: 'All', pending: 'Pending', approved: 'In Progress', completed: 'Done' };
+const STATUS_FILTERS = ['pending', 'approved', 'completed'];
+const STATUS_LABELS  = { pending: 'Pending', approved: 'In Progress', completed: 'Done' };
 
 const DATE_FILTERS = [
   { key: 'all',       label: 'All Time'  },
@@ -37,31 +37,43 @@ export default function AssocVisitsScreen({ navigation, route }) {
   const { user }       = useAuth();
   const tz             = user?.company_timezone || 'Asia/Kolkata';
 
+  const initFilter = route.params?.initialFilter;
+  const defaultStatuses = initFilter
+    ? (Array.isArray(initFilter) ? initFilter : [initFilter])
+    : ['pending', 'approved'];
+
   const [visits,        setVisits]        = useState([]);
   const [page,          setPage]          = useState(1);
   const [hasMore,       setHasMore]       = useState(false);
-  const [status,        setStatus]        = useState(route.params?.initialFilter || 'all');
+  const [statuses,      setStatuses]      = useState(defaultStatuses);
   const [dateFilter,    setDateFilter]    = useState('all');
   const [customDate,    setCustomDate]    = useState(new Date());
   const [showPicker,    setShowPicker]    = useState(false);
   const [search,        setSearch]        = useState('');
-  const [sortOrder,     setSortOrder]     = useState('desc');
+  const [sortOrder,     setSortOrder]     = useState('asc');
   const [loading,       setLoading]       = useState(true);
   const [loadingMore,   setLoadingMore]   = useState(false);
   const [refreshing,    setRefreshing]    = useState(false);
 
   const abortRef      = useRef(null);
   const loadIdRef     = useRef(0);
-  const statusRef     = useRef(status);
+  const statusesRef   = useRef(statuses);
   const dateFilterRef = useRef(dateFilter);
   const customDateRef = useRef(customDate);
   const searchRef     = useRef(search);
   const sortRef       = useRef(sortOrder);
-  statusRef.current     = status;
+  statusesRef.current   = statuses;
   dateFilterRef.current = dateFilter;
   customDateRef.current = customDate;
   searchRef.current     = search;
   sortRef.current       = sortOrder;
+
+  function toggleStatus(f) {
+    setStatuses(prev => {
+      const next = prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f];
+      return next;
+    });
+  }
 
   function buildDateParams(df, cd) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
@@ -92,13 +104,13 @@ export default function AssocVisitsScreen({ navigation, route }) {
 
     try {
       const params = { page: pg, limit: PAGE_SIZE };
-      if (st !== 'all') params.status = st;
-      if (sq?.trim())   params.search = sq.trim();
+      if (st && st.length > 0) params.status = st.join(',');
+      if (sq?.trim())          params.search  = sq.trim();
       Object.assign(params, buildDateParams(df, customDateRef.current));
       params.order = ord ?? sortRef.current;
 
       const { data } = await api.get('/visits', { params, signal: ctrl.signal });
-      if (myId !== loadIdRef.current) return; // superseded by a newer request
+      if (myId !== loadIdRef.current) return;
 
       const incoming = data.visits || [];
       const effectiveOrd = ord ?? sortRef.current;
@@ -119,41 +131,45 @@ export default function AssocVisitsScreen({ navigation, route }) {
     }
   }
 
-  // Status / date filter / custom date changes → reset sort to smart default, reload
+  // Status / date filter changes → reset sort, reload
   useEffect(() => {
-    const defaultOrd = status === 'pending' ? 'asc' : 'desc';
+    const defaultOrd = statuses.includes('pending') ? 'asc' : 'desc';
     setSortOrder(defaultOrd);
     sortRef.current = defaultOrd;
-    loadPage(1, { st: status, df: dateFilter, sq: searchRef.current, ord: defaultOrd });
-  }, [status, dateFilter, customDate]);
+    loadPage(1, { st: statuses, df: dateFilter, sq: searchRef.current, ord: defaultOrd });
+  }, [statuses, dateFilter, customDate]);
 
-  // Search changes → debounced reload from page 1
+  // Search changes → debounced reload
   useEffect(() => {
     const t = setTimeout(() => {
-      loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current });
+      loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current });
     }, 400);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Screen gains focus → reload to pick up changes from VisitDetail
+  // Screen gains focus → reload
   useFocusEffect(useCallback(() => {
     const incoming = route.params?.initialFilter;
-    if (incoming && incoming !== statusRef.current) {
-      setStatus(incoming);  // triggers [status, dateFilter] effect
-    } else {
-      loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current });
+    if (incoming) {
+      const arr = Array.isArray(incoming) ? incoming : [incoming];
+      const current = statusesRef.current;
+      if (arr.join(',') !== current.join(',')) {
+        setStatuses(arr);
+        return;
+      }
     }
+    loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current });
   }, [route.params?.initialFilter]));
 
   // Push notification → reload
   useEffect(() => {
-    if (refreshKey > 0) loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current });
+    if (refreshKey > 0) loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current });
   }, [refreshKey]);
 
-  // Auto-refresh every 2 minutes so scheduled visits appear without manual pull-to-refresh
+  // Auto-refresh every 2 minutes
   useEffect(() => {
     const t = setInterval(
-      () => loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current }),
+      () => loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current }),
       2 * 60 * 1000
     );
     return () => clearInterval(t);
@@ -161,13 +177,13 @@ export default function AssocVisitsScreen({ navigation, route }) {
 
   function handleLoadMore() {
     if (hasMore && !loadingMore && !loading) {
-      loadPage(page + 1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current, append: true });
+      loadPage(page + 1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current, append: true });
     }
   }
 
   function handleRefresh() {
     setRefreshing(true);
-    loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current });
+    loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current });
   }
 
   const listFooter = loadingMore
@@ -191,7 +207,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
             const next = sortOrder === 'asc' ? 'desc' : 'asc';
             setSortOrder(next);
             sortRef.current = next;
-            loadPage(1, { st: statusRef.current, df: dateFilterRef.current, sq: searchRef.current, ord: next });
+            loadPage(1, { st: statusesRef.current, df: dateFilterRef.current, sq: searchRef.current, ord: next });
           }}>
           <Text style={s.sortBtnText}>
             {sortOrder === 'asc' ? '↑ Oldest' : '↓ Newest'}
@@ -218,16 +234,20 @@ export default function AssocVisitsScreen({ navigation, route }) {
         )}
       </View>
 
-      {/* Status filter */}
+      {/* Status filter — multi-select */}
       <View style={s.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-          {STATUS_FILTERS.map(f => (
-            <TouchableOpacity key={f}
-              style={[s.chip, status === f && s.chipActive]}
-              onPress={() => setStatus(f)}>
-              <Text style={[s.chipText, status === f && s.chipTextActive]}>{STATUS_LABELS[f]}</Text>
-            </TouchableOpacity>
-          ))}
+          {STATUS_FILTERS.map(f => {
+            const active = statuses.includes(f);
+            return (
+              <TouchableOpacity key={f}
+                style={[s.chip, active && s.chipActive]}
+                onPress={() => toggleStatus(f)}>
+                {active && <Text style={s.chipCheck}>✓ </Text>}
+                <Text style={[s.chipText, active && s.chipTextActive]}>{STATUS_LABELS[f]}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -251,7 +271,7 @@ export default function AssocVisitsScreen({ navigation, route }) {
         </ScrollView>
       </View>
 
-      {/* Date picker — Android: native inline; iOS: modal */}
+      {/* Date picker */}
       {showPicker && Platform.OS === 'android' && (
         <DateTimePicker
           value={customDate}
@@ -350,10 +370,11 @@ const s = StyleSheet.create({
                     borderBottomWidth: 1, borderBottomColor: COLORS.border },
   dateWrap:       { borderTopWidth: 0 },
   chips:          { paddingHorizontal: 12, flexDirection: 'row', gap: 8 },
-  chip:           { height: 34, paddingHorizontal: 16, borderRadius: 17,
-                    justifyContent: 'center', alignItems: 'center',
+  chip:           { height: 34, paddingHorizontal: 14, borderRadius: 17,
+                    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
                     backgroundColor: '#f1f2f8', borderWidth: 1.5, borderColor: '#c7c8e0' },
   chipActive:     { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipCheck:      { fontSize: 11, color: '#fff', fontWeight: '700' },
   chipText:       { fontSize: 13, fontWeight: '600', color: '#374151' },
   chipTextActive: { color: '#fff' },
   list:           { padding: 12, paddingBottom: 32 },

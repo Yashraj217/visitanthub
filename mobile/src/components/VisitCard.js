@@ -76,6 +76,22 @@ export default function VisitCard({ visit, onPress }) {
             )}
           </View>
           {visit.service_name ? <Text style={s.service}>{visit.service_name}</Text> : null}
+          {visit.current_stage_name ? (
+            <View style={s.stageRow}>
+              <View style={[s.stagePill, { backgroundColor: visit.current_stage_color || COLORS.primary }]}>
+                <Text style={s.stagePillText}>{visit.current_stage_name}</Text>
+              </View>
+              {visit.stage_status === 'waiting' && (
+                <View style={s.waitingChip}>
+                  <Text style={s.waitingChipText}>
+                    ⏱ {visit.stage_waiting_since
+                      ? fmtElapsed(now - new Date(visit.stage_waiting_since))
+                      : 'Waiting'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : null}
           {visit.employee_name ? (
             <View style={s.assigneeRow}>
               <Ionicons name="person-outline" size={12} color={COLORS.textMuted} style={{ flexShrink: 0 }} />
@@ -123,6 +139,12 @@ const s = StyleSheet.create({
   readyBadge:      { backgroundColor: '#22c55e', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8 },
   readyText:       { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
   service:         { fontSize: 13, color: COLORS.primary, fontFamily: FONTS.semiBold, marginBottom: 3 },
+  stageRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' },
+  stagePill:       { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  stagePillText:   { fontSize: 11, fontFamily: FONTS.semiBold, color: '#fff' },
+  waitingChip:     { backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa',
+                     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  waitingChipText: { fontSize: 11, fontFamily: FONTS.semiBold, color: '#c2410c' },
   assigneeRow:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, flexShrink: 1 },
   assignee:        { fontSize: 12, color: COLORS.textMuted, fontFamily: FONTS.regular, flexShrink: 1, flexWrap: 'wrap' },
   right:           { alignItems: 'flex-end', gap: 6 },

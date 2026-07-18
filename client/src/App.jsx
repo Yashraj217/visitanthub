@@ -31,6 +31,8 @@ import CompanyVisitors from './pages/company/Visitors';
 import CompanySettings from './pages/company/Settings';
 import CompanyServices from './pages/company/Services';
 import Scheduling from './pages/company/Scheduling';
+import Billing from './pages/company/Billing';
+import Revisits from './pages/company/Revisits';
 
 // Company user portal
 import MyVisits from './pages/user-portal/MyVisits';
@@ -111,8 +113,10 @@ function AppRoutes() {
         <Route path="visits"      element={<CompanyVisits />} />
         <Route path="visitors"    element={<CompanyVisitors />} />
         <Route path="services"    element={<CompanyServices />} />
+        <Route path="revisits"    element={<Revisits />} />
         <Route path="scheduling"  element={<Scheduling />} />
         <Route path="settings"    element={<CompanySettings />} />
+        <Route path="billing"     element={<Billing />} />
         <Route path="help"        element={<HelpPage />} />
       </Route>
 

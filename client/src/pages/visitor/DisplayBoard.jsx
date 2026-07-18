@@ -94,7 +94,7 @@ function fmtWaitTimer(utcStr) {
   return `${h}h ${m % 60 ? (m % 60) + 'm' : ''}`.trim();
 }
 
-function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
+function ServiceColumn({ name, serving, waiting, upcoming, accent, tz, waitingStatusEnabled }) {
   const location = serving[0]?.employee_location || waiting[0]?.employee_location || null;
   return (
     <div className="flex flex-col overflow-hidden rounded-xl bg-gray-900/50 border border-gray-800">
@@ -114,13 +114,14 @@ function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
         ) : (
           <div className="space-y-1">
             {serving.map(v => {
-              const waitTimer = v.stage_status === 'waiting' ? fmtWaitTimer(v.stage_waiting_since) : null;
+              const isWaiting = waitingStatusEnabled && v.stage_status === 'waiting';
+              const waitTimer = isWaiting ? fmtWaitTimer(v.stage_waiting_since) : null;
               return (
-                <div key={v.id} className={`rounded-lg border px-2.5 py-2 ${v.stage_status === 'waiting' ? 'border-amber-600/60 bg-amber-950/40' : 'border-green-700/60 bg-green-950/50'}`}>
+                <div key={v.id} className={`rounded-lg border px-2.5 py-2 ${isWaiting ? 'border-amber-600/60 bg-amber-950/40' : 'border-green-700/60 bg-green-950/50'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-bold text-white truncate leading-tight flex-1">{v.visitor_name}</p>
                     <div className="flex items-center gap-1 shrink-0">
-                      {v.stage_status === 'waiting' && (
+                      {isWaiting && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white animate-pulse">
                           WAITING{waitTimer ? ` ${waitTimer}` : ''}
                         </span>
@@ -133,7 +134,7 @@ function ServiceColumn({ name, serving, waiting, upcoming, accent, tz }) {
                       )}
                     </div>
                   </div>
-                  <p className={`text-xs truncate mt-0.5 ${v.stage_status === 'waiting' ? 'text-amber-400' : 'text-green-400'}`}>{v.employee_name}
+                  <p className={`text-xs truncate mt-0.5 ${isWaiting ? 'text-amber-400' : 'text-green-400'}`}>{v.employee_name}
                     {v.designation ? <span className="opacity-60"> · {v.designation}</span> : null}
                   </p>
                 </div>
@@ -275,6 +276,8 @@ export default function DisplayBoard() {
   const [error, setError]         = useState(null);
   const [pulse, setPulse]         = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  // overrideAll: true when user explicitly chose "Show All" from on-TV setup, overriding urlFilter
+  const [overrideAll, setOverrideAll] = useState(false);
   const [filter, setFilter]       = useState(() => {
     if (urlFilter) return null; // URL controls the filter; don't load from localStorage
     try { const s = localStorage.getItem(STORAGE_KEY(slug, screen)); return s ? new Set(JSON.parse(s)) : null; }
@@ -314,6 +317,14 @@ export default function DisplayBoard() {
     const id = setInterval(fetchBoard, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchBoard]);
+
+  // SSE: re-fetch immediately when the server pushes a status-change event
+  useEffect(() => {
+    const src = new EventSource(`/api/display/${slug}/events`);
+    src.onmessage = () => fetchBoard();
+    // onerror is handled automatically by EventSource (auto-reconnects)
+    return () => src.close();
+  }, [slug, fetchBoard]);
 
   // Auto-clear stale filter when it no longer matches any service in today's data
   useEffect(() => {
@@ -371,8 +382,15 @@ export default function DisplayBoard() {
   }, []); // runs once — reads state via refs
 
   function saveFilter(names) {
-    if (names.length === 0) { localStorage.removeItem(STORAGE_KEY(slug, screen)); setFilter(null); }
-    else { localStorage.setItem(STORAGE_KEY(slug, screen), JSON.stringify(names)); setFilter(new Set(names)); }
+    if (names.length === 0) {
+      localStorage.removeItem(STORAGE_KEY(slug, screen));
+      setFilter(null);
+      setOverrideAll(true); // user explicitly chose "show all" — override URL filter
+    } else {
+      localStorage.setItem(STORAGE_KEY(slug, screen), JSON.stringify(names));
+      setFilter(new Set(names));
+      setOverrideAll(false);
+    }
     setShowSetup(false);
   }
 
@@ -388,17 +406,30 @@ export default function DisplayBoard() {
     </div>
   );
 
+  // Display board disabled by admin — show a neutral offline screen
+  if (board.company?.display_board_enabled === 0) return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4 text-white select-none">
+      {board.company.logo_url && (
+        <img src={board.company.logo_url} alt={board.company.name} className="h-16 w-auto object-contain opacity-40 mb-2" />
+      )}
+      <p className="text-5xl">📺</p>
+      <p className="text-2xl font-bold text-gray-300">{board.company.name}</p>
+      <p className="text-gray-600 text-sm tracking-widest uppercase">Display offline</p>
+    </div>
+  );
+
   const { company, visits, upcoming = [] } = board;
   const accent   = company.sidebar_color || '#1e40af';
   const kioskUrl = `${window.location.origin}/visit/${company.slug}`;
 
+  // All services for the filter dialog: configured services + any from today's visits
   const allServices = [...new Set([
+    ...(board.services || []),
     ...visits.map(v => v.service_name || v.purpose),
     ...upcoming.map(u => u.service_name),
   ].filter(Boolean))].sort();
-  // Services actually available for filtering (active visits + upcoming combined)
 
-  const effectiveFilter  = urlFilter || filter; // URL param takes priority over localStorage
+  const effectiveFilter  = overrideAll ? null : (urlFilter || filter); // URL param takes priority, unless user cleared it on-screen
   const activeFilter     = effectiveFilter && effectiveFilter.size > 0;
   const filteredVisits   = activeFilter ? visits.filter(v => effectiveFilter.has(v.service_name) || effectiveFilter.has(v.purpose)) : visits;
   const filteredUpcoming = activeFilter ? upcoming.filter(u => effectiveFilter.has(u.service_name)) : upcoming;
@@ -406,25 +437,24 @@ export default function DisplayBoard() {
   const visible         = filteredVisits.length === 0 && visits.length > 0 ? visits   : filteredVisits;
   const visibleUpcoming = filteredVisits.length === 0 && visits.length > 0 ? upcoming : filteredUpcoming;
 
+  // ── Always group by service (stages appear as chips on visitor cards) ──
   const serviceMap = new Map();
-  // Pre-seed all configured services so empty-queue columns still appear
   const configuredServices = board.services || [];
   const effectiveServices = activeFilter
     ? configuredServices.filter(s => effectiveFilter.has(s))
     : configuredServices;
   effectiveServices.forEach(name => {
-    serviceMap.set(name, { serving: [], waiting: [], upcoming: [] });
+    serviceMap.set(name, { serving: [], waiting: [], upcoming: [], accent });
   });
   visible.forEach(v => {
     const key = v.service_name || v.purpose || 'General';
-    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [] });
+    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [], accent });
     const g = serviceMap.get(key);
     if (v.status === 'approved') g.serving.push(v); else g.waiting.push(v);
   });
-  // Merge upcoming scheduled visits into service columns (respects filter)
   visibleUpcoming.forEach(u => {
     const key = u.service_name || 'General';
-    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [] });
+    if (!serviceMap.has(key)) serviceMap.set(key, { serving: [], waiting: [], upcoming: [], accent });
     serviceMap.get(key).upcoming.push(u);
   });
 
@@ -443,8 +473,8 @@ export default function DisplayBoard() {
     const svcs = getPageServices(pg);
     return (
       <div key={`svc-${pg}`} className={`${animClass} absolute inset-2 grid grid-cols-3 gap-2`}>
-        {svcs.map(([name, { serving, waiting, upcoming: upco }]) => (
-          <ServiceColumn key={name} name={name} serving={serving} waiting={waiting} upcoming={upco || []} accent={accent} tz={company.timezone} />
+        {svcs.map(([name, { serving, waiting, upcoming: upco, accent: colAccent }]) => (
+          <ServiceColumn key={name} name={name} serving={serving} waiting={waiting} upcoming={upco || []} accent={colAccent || accent} tz={company.timezone} waitingStatusEnabled={!!company.waiting_status_enabled} />
         ))}
         {Array.from({ length: PAGE_SIZE - svcs.length }).map((_, i) => (
           <div key={i} className="rounded-xl border border-dashed border-gray-900 opacity-20" />

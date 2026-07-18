@@ -1,11 +1,88 @@
 const { pool } = require('../config/database');
+const { broadcast } = require('../services/displayBroadcaster');
+const { sendExpoPush: sendPush } = require('../services/pushNotification');
 
 /* GET /api/stages — fetch ordered stages for the caller's company */
 async function getStages(req, res) {
   try {
+    const [[company]] = await pool.query(
+      'SELECT stages_enabled FROM companies WHERE id = ?', [req.user.company_id]
+    );
+    if (!company?.stages_enabled) return res.json([]);
+
     const [rows] = await pool.query(
       `SELECT vs.id, vs.name, vs.color, vs.stage_order, vs.is_final, vs.is_default,
-              vs.employee_id, e.name AS employee_name
+              vs.is_optional, vs.employee_id, e.name AS employee_name
+       FROM visit_stages vs
+       LEFT JOIN employees e ON e.id = vs.employee_id
+       WHERE vs.company_id = ? ORDER BY vs.stage_order ASC`,
+      [req.user.company_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/* GET /api/stages/enabled — current stages_enabled flag */
+async function getStagesEnabled(req, res) {
+  try {
+    const [[company]] = await pool.query(
+      'SELECT stages_enabled FROM companies WHERE id = ?', [req.user.company_id]
+    );
+    res.json({ enabled: !!company?.stages_enabled });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/* PUT /api/stages/enabled — toggle stage tracking on/off */
+async function setStagesEnabled(req, res) {
+  const { enabled } = req.body;
+  try {
+    await pool.query('UPDATE companies SET stages_enabled = ? WHERE id = ?',
+      [enabled ? 1 : 0, req.user.company_id]);
+    res.json({ enabled: !!enabled });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/* GET /api/stages/waiting-status — current waiting_status_enabled flag */
+async function getWaitingStatusEnabled(req, res) {
+  try {
+    const [[company]] = await pool.query(
+      'SELECT waiting_status_enabled FROM companies WHERE id = ?', [req.user.company_id]
+    );
+    res.json({ enabled: !!company?.waiting_status_enabled });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/* PUT /api/stages/waiting-status — toggle waiting status feature on/off */
+async function setWaitingStatusEnabled(req, res) {
+  const { enabled } = req.body;
+  try {
+    await pool.query('UPDATE companies SET waiting_status_enabled = ? WHERE id = ?',
+      [enabled ? 1 : 0, req.user.company_id]);
+    res.json({ enabled: !!enabled });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+/* GET /api/stages/all — all stages regardless of stages_enabled (admin config use) */
+async function getAllStages(req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT vs.id, vs.name, vs.color, vs.stage_order, vs.is_final, vs.is_default,
+              vs.is_optional, vs.employee_id, e.name AS employee_name
        FROM visit_stages vs
        LEFT JOIN employees e ON e.id = vs.employee_id
        WHERE vs.company_id = ? ORDER BY vs.stage_order ASC`,
@@ -20,7 +97,7 @@ async function getStages(req, res) {
 
 /* PUT /api/stages — replace all stages for the company (admin only) */
 async function saveStages(req, res) {
-  const { stages } = req.body; // array of { name, color, stage_order, is_final, is_default, employee_id }
+  const { stages } = req.body; // array of { name, color, stage_order, is_final, is_default, is_optional, employee_id }
   if (!Array.isArray(stages)) return res.status(400).json({ message: 'stages must be an array' });
 
   const conn = await pool.getConnection();
@@ -38,9 +115,10 @@ async function saveStages(req, res) {
         s.is_final ? 1 : 0,
         s.employee_id || null,
         s.is_default ? 1 : 0,
+        s.is_optional ? 1 : 0,
       ]);
       await conn.query(
-        `INSERT INTO visit_stages (company_id, name, color, stage_order, is_final, employee_id, is_default) VALUES ?`,
+        `INSERT INTO visit_stages (company_id, name, color, stage_order, is_final, employee_id, is_default, is_optional) VALUES ?`,
         [rows]
       );
     }
@@ -48,7 +126,7 @@ async function saveStages(req, res) {
     await conn.commit();
     const [saved] = await conn.query(
       `SELECT vs.id, vs.name, vs.color, vs.stage_order, vs.is_final, vs.is_default,
-              vs.employee_id, e.name AS employee_name
+              vs.is_optional, vs.employee_id, e.name AS employee_name
        FROM visit_stages vs
        LEFT JOIN employees e ON e.id = vs.employee_id
        WHERE vs.company_id = ? ORDER BY vs.stage_order ASC`,
@@ -107,6 +185,7 @@ async function advanceStage(req, res) {
 
     // Update visit's current stage; re-route to stage's employee if one is assigned; reset waiting state
     // If employee changes, reset status to pending so visit re-enters new associate's queue properly
+    // If stage is final, auto-complete the visit
     const updateFields = [
       'current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?',
       'stage_status = NULL', 'stage_waiting_since = NULL',
@@ -116,8 +195,13 @@ async function advanceStage(req, res) {
       updateFields.push('employee_id = ?');
       updateValues.push(stage.employee_id);
     }
-    if (employeeChanging) {
-      updateFields.push('status = ?', 'approved_at = NULL');
+    if (stage.is_final) {
+      updateFields.push('status = ?');
+      updateValues.push('completed');
+    } else if (employeeChanging) {
+      // Reset status to pending so visitor re-enters the new associate's queue
+      // Update visit_time to NOW() so visitor lands at the END of the new queue (not the front)
+      updateFields.push('status = ?', 'approved_at = NULL', 'visit_time = NOW()');
       updateValues.push('pending');
     }
     updateValues.push(visitId);
@@ -143,10 +227,24 @@ async function advanceStage(req, res) {
       const { promoteNextReady } = require('./visitController');
       const [[company]] = await pool.query('SELECT timezone FROM companies WHERE id = ?', [visit.company_id]);
       const tz = company?.timezone || 'UTC';
-      // Old employee: their queue shrank — promote their next visitor
       promoteNextReady(visit.employee_id, visit.company_id, tz);
-      // New employee: they gained a pending visitor — recalculate their queue
       promoteNextReady(stage.employee_id, visit.company_id, tz);
+
+      // Notify the new associate via push
+      pool.query(
+        `SELECT u.push_token FROM users u
+         WHERE u.employee_id = ? AND u.push_token IS NOT NULL LIMIT 1`,
+        [stage.employee_id]
+      ).then(([[row]]) => {
+        if (row?.push_token) {
+          sendPush({
+            token: row.push_token,
+            title: 'Visitor Arrived at Your Stage',
+            body: `A visitor has been moved to: ${stage.name}`,
+            data: { visitId },
+          });
+        }
+      }).catch(() => {});
     }
 
     // Return updated stage info + full log
@@ -161,9 +259,10 @@ async function advanceStage(req, res) {
       current_stage_name:  stage.name,
       current_stage_color: stage.color,
       is_final:            !!stage.is_final,
-      status_reset:        employeeChanging ? 'pending' : undefined,
+      status_reset:        stage.is_final ? 'completed' : (employeeChanging ? 'pending' : undefined),
       logs,
     });
+    broadcast(visit.company_id);
   } catch (err) {
     await conn.rollback();
     console.error(err);
@@ -213,4 +312,63 @@ async function setStageWaiting(req, res) {
   res.json({ stage_status: stage_status || null, stage_waiting_since: isWaiting ? new Date() : null });
 }
 
-module.exports = { getStages, saveStages, advanceStage, getStageLogs, setStageWaiting };
+/* GET /api/stages/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD */
+async function getStageAnalytics(req, res) {
+  try {
+    const { from, to } = req.query;
+    const companyId = req.user.company_id;
+
+    // Default to last 30 days if not specified
+    const fromDate = from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const toDate   = to   || new Date().toISOString().slice(0, 10);
+
+    const [rows] = await pool.query(
+      `SELECT
+         stage_name, color,
+         COUNT(*)                                        AS visit_count,
+         ROUND(AVG(duration_minutes), 1)                AS avg_minutes,
+         ROUND(MAX(duration_minutes), 1)                AS max_minutes
+       FROM (
+         SELECT
+           l.stage_name, l.color,
+           TIMESTAMPDIFF(SECOND, l.entered_at,
+             COALESCE(
+               (SELECT MIN(l2.entered_at) FROM visit_stage_logs l2
+                WHERE l2.visit_id = l.visit_id AND l2.entered_at > l.entered_at),
+               (SELECT updated_at FROM visits vv WHERE vv.id = l.visit_id AND vv.status = 'completed')
+             )
+           ) / 60.0 AS duration_minutes
+         FROM visit_stage_logs l
+         JOIN visits v ON v.id = l.visit_id
+         WHERE v.company_id = ?
+           AND DATE(l.entered_at) >= ? AND DATE(l.entered_at) <= ?
+       ) sub
+       WHERE duration_minutes IS NOT NULL AND duration_minutes >= 0 AND duration_minutes < 480
+       GROUP BY stage_name, color
+       ORDER BY avg_minutes DESC`,
+      [companyId, fromDate, toDate]
+    );
+
+    res.json({ from: fromDate, to: toDate, stages: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getDisplayBoardEnabled(req, res) {
+  try {
+    const [[company]] = await pool.query('SELECT display_board_enabled FROM companies WHERE id = ?', [req.user.company_id]);
+    res.json({ enabled: company?.display_board_enabled !== 0 });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+}
+
+async function setDisplayBoardEnabled(req, res) {
+  const { enabled } = req.body;
+  try {
+    await pool.query('UPDATE companies SET display_board_enabled = ? WHERE id = ?', [enabled ? 1 : 0, req.user.company_id]);
+    res.json({ enabled: !!enabled });
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Server error' }); }
+}
+
+module.exports = { getStages, getAllStages, saveStages, advanceStage, getStageLogs, setStageWaiting, getStageAnalytics, getStagesEnabled, setStagesEnabled, getWaitingStatusEnabled, setWaitingStatusEnabled, getDisplayBoardEnabled, setDisplayBoardEnabled };

@@ -59,7 +59,7 @@ function PieTooltip({ active, payload }) {
 }
 
 /* ── Appointments side-drawer ──────────────────────────────────────────────── */
-function AppointmentsDrawer({ open, onClose, today, companyTz }) {
+function AppointmentsDrawer({ open, onClose }) {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading]           = useState(false);
   const [acting, setActing]             = useState({});
@@ -163,6 +163,17 @@ function AppointmentsDrawer({ open, onClose, today, companyTz }) {
   );
 }
 
+function StageTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-sm">
+      <p className="font-medium text-gray-700">{label}</p>
+      <p className="text-indigo-600 font-semibold">{payload[0].value} min avg</p>
+      {payload[1] && <p className="text-red-400 text-xs">{payload[1].value} min max</p>}
+    </div>
+  );
+}
+
 /* ── Main dashboard ─────────────────────────────────────────────────────────── */
 export default function CompanyDashboard() {
   const { user } = useAuth();
@@ -184,23 +195,44 @@ export default function CompanyDashboard() {
   const [customTo, setCustomTo]     = useState(today);
   const [pendingApptCount, setPendingApptCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [referral, setReferral]     = useState(null);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [copied, setCopied]         = useState(false);
+  const [revisitCount, setRevisitCount] = useState(null); // { total, overdue }
 
+  // Stage analytics
+  const [stageAnalytics, setStageAnalytics] = useState(null);
+  const [stageFrom, setStageFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 29);
+    return d.toLocaleDateString('en-CA');
+  });
+  const [stageTo, setStageTo] = useState(today);
+
+  // Load everything in one shot so nothing pops in late
   useEffect(() => {
     Promise.all([
       api.get('/companies/me/stats'),
       api.get('/companies/me/charts'),
-    ]).then(([s, c]) => {
+      api.get('/stages/analytics', { params: { from: stageFrom, to: stageTo } }).catch(() => ({ data: null })),
+      api.get('/scheduling/bookings', { params: { status: 'pending' } }).catch(() => ({ data: [] })),
+      api.get('/companies/me/referral').catch(() => ({ data: null })),
+      api.get('/visits/revisits/count').catch(() => ({ data: null })),
+    ]).then(([s, c, sa, appts, ref, rc]) => {
       setStats(s.data);
       setPreset(c.data);
+      if (sa.data) setStageAnalytics(sa.data);
+      setPendingApptCount(appts.data.length);
+      if (ref.data) setReferral(ref.data);
+      if (rc.data) setRevisitCount(rc.data);
     }).finally(() => setLoading(false));
   }, []);
 
-  // Fetch count of all pending appointments (any date) for the badge
+  // Re-fetch stage analytics when date range changes
   useEffect(() => {
-    api.get('/scheduling/bookings', { params: { status: 'pending' } })
-      .then(({ data }) => setPendingApptCount(data.length))
+    api.get('/stages/analytics', { params: { from: stageFrom, to: stageTo } })
+      .then(({ data }) => setStageAnalytics(data))
       .catch(() => {});
-  }, []);
+  }, [stageFrom, stageTo]);
 
   useEffect(() => {
     if (period !== 'custom' || !customFrom || !customTo || customFrom > customTo) return;
@@ -239,10 +271,44 @@ export default function CompanyDashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">Welcome back, {user?.name}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white p-2 rounded-xl border border-gray-200 cursor-pointer" title="Go to Settings for full QR code">
-            <Link to="/dashboard/settings"><QRCodeSVG value={kiosk} size={56} level="M" includeMargin={false} /></Link>
+        <div className="flex flex-col items-end gap-2">
+          {/* Top-right actions row */}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* Revisits */}
+            <Link to="/dashboard/revisits"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold text-white shadow-sm transition-all hover:scale-105 hover:shadow-md tracking-wide"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
+              🔁 Revisits
+              {revisitCount?.total > 0 && (
+                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  revisitCount.overdue > 0 ? 'bg-red-400 text-white' : 'bg-white/30 text-white'
+                }`}>
+                  {revisitCount.total}
+                </span>
+              )}
+            </Link>
+            {/* WhatsApp token balance */}
+            {referral?.whatsapp_enabled && (
+              <Link to="/dashboard/billing"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all hover:scale-105 hover:shadow-md"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}>
+                <span className="text-sm">💬</span>
+                <span>{referral.whatsapp_tokens}</span>
+                <span className="opacity-80 font-normal">WhatsApp tokens</span>
+              </Link>
+            )}
+            {/* Refer & Earn */}
+            <button
+              onClick={() => setReferralOpen(true)}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+              🎁 Refer &amp; Earn
+            </button>
+            {/* QR */}
+            <div className="bg-white p-2 rounded-xl border border-gray-200 cursor-pointer" title="Go to Settings for full QR code">
+              <Link to="/dashboard/settings"><QRCodeSVG value={kiosk} size={44} level="M" includeMargin={false} /></Link>
+            </div>
           </div>
+          {/* Kiosk URL row */}
           <div className="text-right">
             <p className="text-xs text-gray-400 mb-1">Visitor Kiosk URL</p>
             <div className="flex items-center gap-2">
@@ -253,6 +319,38 @@ export default function CompanyDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Refer & Earn modal */}
+      {referralOpen && referral && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setReferralOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">🎁 Refer &amp; Earn</h2>
+              <button onClick={() => setReferralOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <div className="bg-indigo-50 rounded-xl p-4 mb-4 text-center">
+              <p className="text-3xl font-black text-indigo-600 tracking-wider mb-1">{referral.referral_code}</p>
+              <p className="text-xs text-indigo-400">Your referral code</p>
+            </div>
+            <p className="text-sm text-gray-600 mb-4 text-center">
+              Share your referral link. When someone registers a new company on VisitantHub using your link, you get <strong>500 free WhatsApp tokens</strong> instantly.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <input readOnly className="input flex-1 text-xs bg-gray-50" value={referral.referral_url} />
+              <button
+                onClick={() => { navigator.clipboard.writeText(referral.referral_url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="btn-primary text-xs px-4 shrink-0">
+                {copied ? '✓ Copied!' : 'Copy'}
+              </button>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
+              <span className="text-sm text-gray-500">Your WA tokens balance</span>
+              <span className="text-lg font-bold text-green-600">{referral.whatsapp_tokens}</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-3 text-center">1 token = 1 WhatsApp message sent.</p>
+          </div>
+        </div>
+      )}
 
       {/* Appointments tab — shown below title, above period filter */}
       <button
@@ -384,6 +482,52 @@ export default function CompanyDashboard() {
             </div>
           )}
 
+          {/* Stage Performance */}
+          {stageAnalytics?.stages?.length > 0 && (
+            <div className="card mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                <div className="flex-1">
+                  <h2 className="text-base font-semibold text-gray-900">Stage Performance</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Average time visitors spend at each stage (minutes)</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <input type="date" value={stageFrom} onChange={e => setStageFrom(e.target.value)}
+                    max={stageTo} className="input py-1 text-xs w-32" />
+                  <span className="text-gray-400">to</span>
+                  <input type="date" value={stageTo} onChange={e => setStageTo(e.target.value)}
+                    min={stageFrom} max={today} className="input py-1 text-xs w-32" />
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={stageAnalytics.stages} layout="vertical"
+                  margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false}
+                    unit=" min" allowDecimals={false} />
+                  <YAxis type="category" dataKey="stage_name" width={90}
+                    tick={{ fontSize: 12, fontWeight: 600 }} tickLine={false} axisLine={false} />
+                  <Tooltip content={<StageTooltip />} />
+                  <Bar dataKey="avg_minutes" name="Avg" radius={[0,4,4,0]} maxBarSize={28}
+                    label={{ position: 'right', fontSize: 11, fill: '#6b7280', formatter: v => `${v}m` }}>
+                    {stageAnalytics.stages.map((s, i) => (
+                      <Cell key={i} fill={s.color || PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100">
+                {stageAnalytics.stages.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color || PIE_COLORS[i % PIE_COLORS.length] }} />
+                    <span className="text-gray-600">{s.stage_name}</span>
+                    <span className="font-semibold text-gray-800">{s.avg_minutes}m avg</span>
+                    <span className="text-gray-400">· {s.visit_count} visits</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Recent visits */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -423,8 +567,6 @@ export default function CompanyDashboard() {
       <AppointmentsDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        today={today}
-        companyTz={companyTz}
       />
     </div>
   );

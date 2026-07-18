@@ -37,56 +37,6 @@ async function sendMail({ to, subject, html }) {
   }
 }
 
-// ── Welcome email — sent when a new company registers ──────────────────────
-async function sendWelcomeEmail({ companyName, adminName, adminEmail }) {
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#6366f1,#4f46e5);padding:36px 40px;text-align:center;">
-            <p style="margin:0;font-size:32px;">👋</p>
-            <h1 style="margin:12px 0 4px;color:#fff;font-size:22px;font-weight:700;">Welcome to ${APP_NAME}!</h1>
-            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">Your account has been submitted for review</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px 40px;">
-            <p style="margin:0 0 16px;color:#374151;font-size:15px;">Hi <strong>${adminName}</strong>,</p>
-            <p style="margin:0 0 16px;color:#6b7280;font-size:14px;line-height:1.6;">
-              Thank you for registering <strong>${companyName}</strong> on ${APP_NAME}. Your account is currently under review by our team.
-            </p>
-            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">
-              You will receive another email once your account is approved and ready to use.
-            </p>
-            <div style="background:#f0f0ff;border-left:4px solid #6366f1;border-radius:6px;padding:16px 20px;margin-bottom:28px;">
-              <p style="margin:0;color:#4338ca;font-size:13px;font-weight:600;">What happens next?</p>
-              <ul style="margin:8px 0 0;padding-left:18px;color:#6b7280;font-size:13px;line-height:1.8;">
-                <li>Our team will review your registration</li>
-                <li>You'll be notified by email once approved</li>
-                <li>Log in at <a href="${CLIENT_URL}/login" style="color:#6366f1;">${CLIENT_URL}/login</a></li>
-              </ul>
-            </div>
-            <p style="margin:0;color:#9ca3af;font-size:12px;">If you did not register, please ignore this email.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-  return sendMail({ to: adminEmail, subject: `Welcome to ${APP_NAME} — Account Pending Approval`, html });
-}
-
 // ── Invitation email — sent when company_admin creates a new user ──────────
 async function sendUserInvitation({ userName, userEmail, companyName, password }) {
   const html = `
@@ -232,4 +182,278 @@ async function sendVerificationEmail({ companyName, adminName, adminEmail, verif
   return sendMail({ to: adminEmail, subject: `Verify your email — ${APP_NAME}`, html });
 }
 
-module.exports = { sendWelcomeEmail, sendVerificationEmail, sendUserInvitation, sendPasswordResetOTP };
+// ── Appointment booking confirmation — sent to visitor on booking ─────────
+async function sendBookingConfirmationEmail({ visitorName, visitorEmail, companyName, bookingRef, scheduledDate, scheduledTime, employeeName, serviceName }) {
+  if (!visitorEmail) return { sent: false };
+
+  function fmt12(t) {
+    if (!t) return '';
+    const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    const [y, mo, day] = d.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day} ${months[parseInt(mo) - 1]} ${y}`;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#6366f1,#4f46e5);padding:36px 40px;text-align:center;">
+            <p style="margin:0;font-size:32px;">📅</p>
+            <h1 style="margin:12px 0 4px;color:#fff;font-size:22px;font-weight:700;">Appointment Confirmed</h1>
+            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">${companyName}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;">Hi <strong>${visitorName}</strong>,</p>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">
+              Your appointment has been booked successfully. Here are your details:
+            </p>
+            <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+              <table cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="padding:8px 0;color:#6b7280;font-size:13px;width:130px;vertical-align:top;">Booking Ref</td>
+                  <td style="padding:8px 0;color:#4f46e5;font-size:15px;font-weight:800;font-family:monospace;">${bookingRef}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #ede9fe;vertical-align:top;">Date</td>
+                  <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;border-top:1px solid #ede9fe;">${fmtDate(scheduledDate)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #ede9fe;vertical-align:top;">Time</td>
+                  <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;border-top:1px solid #ede9fe;">${fmt12(scheduledTime)}</td>
+                </tr>
+                ${serviceName ? `
+                <tr>
+                  <td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #ede9fe;vertical-align:top;">Service</td>
+                  <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;border-top:1px solid #ede9fe;">${serviceName}</td>
+                </tr>` : ''}
+                ${employeeName ? `
+                <tr>
+                  <td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #ede9fe;vertical-align:top;">Doctor / Associate</td>
+                  <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;border-top:1px solid #ede9fe;">${employeeName}</td>
+                </tr>` : ''}
+              </table>
+            </div>
+            <div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:6px;padding:14px 18px;margin-bottom:24px;">
+              <p style="margin:0;color:#15803d;font-size:13px;font-weight:600;">📌 Save your booking reference: <span style="font-family:monospace;">${bookingRef}</span></p>
+              <p style="margin:6px 0 0;color:#16a34a;font-size:13px;">You can use this to check your appointment status.</p>
+            </div>
+            <p style="margin:0;color:#9ca3af;font-size:12px;">If you did not make this booking, please ignore this email or contact ${companyName}.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${companyName}. Powered by ${APP_NAME}.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return sendMail({ to: visitorEmail, subject: `Appointment Confirmed — ${bookingRef} · ${companyName}`, html });
+}
+
+// ── Visit rejection email — sent to walk-in visitor when rejected ─────────
+async function sendVisitRejectionEmail({ visitorName, visitorEmail, companyName, refNumber, employeeName, serviceName, reason }) {
+  if (!visitorEmail) return { sent: false };
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:36px 40px;text-align:center;">
+            <p style="margin:0;font-size:32px;">❌</p>
+            <h1 style="margin:12px 0 4px;color:#fff;font-size:22px;font-weight:700;">Visit Could Not Be Processed</h1>
+            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">${companyName}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;">Hi <strong>${visitorName}</strong>,</p>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">
+              We're sorry, but your visit${refNumber ? ` (Ref: <strong>${refNumber}</strong>)` : ''} at <strong>${companyName}</strong> could not be processed at this time.
+            </p>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+              <table cellpadding="0" cellspacing="0" width="100%">
+                ${refNumber ? `<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;width:130px;">Ref #</td><td style="padding:6px 0;color:#111827;font-size:13px;font-weight:600;font-family:monospace;">${refNumber}</td></tr>` : ''}
+                ${serviceName ? `<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;border-top:1px solid #fee2e2;">Service</td><td style="padding:6px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fee2e2;">${serviceName}</td></tr>` : ''}
+                ${employeeName ? `<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;border-top:1px solid #fee2e2;">Associate</td><td style="padding:6px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fee2e2;">${employeeName}</td></tr>` : ''}
+                ${reason ? `<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;border-top:1px solid #fee2e2;vertical-align:top;">Reason</td><td style="padding:6px 0;color:#111827;font-size:13px;border-top:1px solid #fee2e2;">${reason}</td></tr>` : ''}
+              </table>
+            </div>
+            <p style="margin:0 0 8px;color:#6b7280;font-size:14px;line-height:1.6;">
+              Please contact <strong>${companyName}</strong> directly or visit again to reschedule.
+            </p>
+            <p style="margin:16px 0 0;color:#9ca3af;font-size:12px;">If you believe this is an error, please contact the front desk.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${companyName}. Powered by ${APP_NAME}.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return sendMail({ to: visitorEmail, subject: `Visit Update — ${companyName}`, html });
+}
+
+// ── Appointment cancellation email — sent when admin cancels a booking ─────
+async function sendBookingCancellationEmail({ visitorName, visitorEmail, companyName, bookingRef, scheduledDate, scheduledTime, employeeName, serviceName, adminNotes }) {
+  if (!visitorEmail) return { sent: false };
+
+  function fmt12(t) {
+    if (!t) return '';
+    const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    const [y, mo, day] = d.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day} ${months[parseInt(mo) - 1]} ${y}`;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:36px 40px;text-align:center;">
+            <p style="margin:0;font-size:32px;">⚠️</p>
+            <h1 style="margin:12px 0 4px;color:#fff;font-size:22px;font-weight:700;">Appointment Cancelled</h1>
+            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">${companyName}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;">Hi <strong>${visitorName}</strong>,</p>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">
+              Your appointment at <strong>${companyName}</strong> has been cancelled. Details below:
+            </p>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+              <table cellpadding="0" cellspacing="0" width="100%">
+                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:130px;">Booking Ref</td><td style="padding:8px 0;color:#92400e;font-size:14px;font-weight:700;font-family:monospace;">${bookingRef}</td></tr>
+                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #fde68a;">Date</td><td style="padding:8px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fde68a;">${fmtDate(scheduledDate)}</td></tr>
+                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #fde68a;">Time</td><td style="padding:8px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fde68a;">${fmt12(scheduledTime)}</td></tr>
+                ${serviceName ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #fde68a;">Service</td><td style="padding:8px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fde68a;">${serviceName}</td></tr>` : ''}
+                ${employeeName ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #fde68a;">Doctor / Associate</td><td style="padding:8px 0;color:#111827;font-size:13px;font-weight:600;border-top:1px solid #fde68a;">${employeeName}</td></tr>` : ''}
+                ${adminNotes ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;border-top:1px solid #fde68a;vertical-align:top;">Note</td><td style="padding:8px 0;color:#111827;font-size:13px;border-top:1px solid #fde68a;">${adminNotes}</td></tr>` : ''}
+              </table>
+            </div>
+            <p style="margin:0 0 8px;color:#6b7280;font-size:14px;line-height:1.6;">
+              Please book a new appointment or contact <strong>${companyName}</strong> directly for assistance.
+            </p>
+            <p style="margin:16px 0 0;color:#9ca3af;font-size:12px;">If you believe this is an error, please contact the front desk.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${companyName}. Powered by ${APP_NAME}.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return sendMail({ to: visitorEmail, subject: `Appointment Cancelled — ${bookingRef} · ${companyName}`, html });
+}
+
+// ── Appointment reminder — sent to associate the evening before ───────────────
+async function sendAppointmentReminderEmail({ employeeName, employeeEmail, companyName, date, appointments }) {
+  if (!employeeEmail) return { sent: false };
+
+  function fmt12(t) {
+    if (!t) return '';
+    const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    const [y, mo, day] = d.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day} ${months[parseInt(mo) - 1]} ${y}`;
+  }
+
+  const rows = appointments.map(a => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#4f46e5;font-weight:700;font-size:14px;white-space:nowrap;">${fmt12(a.time)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;">${a.visitor_name}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">${a.service_name || a.purpose || '—'}</td>
+    </tr>`).join('');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#6366f1,#4f46e5);padding:32px 40px;text-align:center;">
+            <p style="margin:0;font-size:28px;">📅</p>
+            <h1 style="margin:10px 0 4px;color:#fff;font-size:20px;font-weight:700;">Tomorrow's Appointments</h1>
+            <p style="margin:0;color:rgba(255,255,255,.8);font-size:14px;">${companyName} · ${fmtDate(date)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 40px;">
+            <p style="margin:0 0 20px;color:#374151;font-size:15px;">Hi <strong>${employeeName}</strong>,</p>
+            <p style="margin:0 0 20px;color:#6b7280;font-size:14px;line-height:1.6;">
+              You have <strong>${appointments.length} appointment${appointments.length > 1 ? 's' : ''}</strong> scheduled for tomorrow. Here's your schedule:
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+              <thead>
+                <tr style="background:#f9fafb;">
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Time</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Visitor</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Service / Purpose</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <p style="margin:0;color:#9ca3af;font-size:12px;">Please ensure you are available at the scheduled times. Log in to the app for full details.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${companyName}. Powered by ${APP_NAME}.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  return sendMail({
+    to: employeeEmail,
+    subject: `${appointments.length} Appointment${appointments.length > 1 ? 's' : ''} Tomorrow — ${fmtDate(date)} · ${companyName}`,
+    html,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendUserInvitation, sendPasswordResetOTP, sendBookingConfirmationEmail, sendVisitRejectionEmail, sendBookingCancellationEmail, sendAppointmentReminderEmail };

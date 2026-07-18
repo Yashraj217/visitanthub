@@ -14,6 +14,7 @@ router.post('/me/ref-reset',                 authenticate, requireRole('company_
 router.put('/me/services/:serviceId/ref',    authenticate, requireRole('company_admin'), ctrl.updateServiceRefPrefix);
 router.post('/me/logo',                      authenticate, requireRole('company_admin'), uploadLogo, ctrl.uploadCompanyLogo);
 router.post('/me/services/:serviceId/logo',  authenticate, requireRole('company_admin'), uploadLogo, ctrl.uploadServiceLogo);
+router.get('/me/referral',                   authenticate, requireRole('company_admin'), ctrl.getReferral);
 
 // Super admin routes
 router.get('/',           authenticate, requireRole('super_admin'), ctrl.listCompanies);

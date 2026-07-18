@@ -85,11 +85,11 @@ async function autoCheckInCompany(companyId, timezone) {
         [companyId]
       );
       if (defStage) {
-        const sf = ['current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?'];
-        const sv2 = [defStage.id, defStage.name, defStage.color];
-        if (defStage.employee_id) { sf.push('employee_id = ?'); sv2.push(defStage.employee_id); }
-        sv2.push(ins.insertId);
-        await conn.query(`UPDATE visits SET ${sf.join(', ')} WHERE id = ?`, sv2);
+        // Only set stage label — do NOT override employee_id so visit stays with intended associate
+        await conn.query(
+          'UPDATE visits SET current_stage_id = ?, current_stage_name = ?, current_stage_color = ? WHERE id = ?',
+          [defStage.id, defStage.name, defStage.color, ins.insertId]
+        );
         await conn.query(
           `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
            VALUES (?, ?, ?, ?, NULL, 'Auto')`,

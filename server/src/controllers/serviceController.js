@@ -49,12 +49,14 @@ async function createService(req, res) {
 }
 
 async function updateService(req, res) {
-  const { name, description, color, icon, is_active, sort_order } = req.body;
+  const { name, description, color, icon, sort_order } = req.body;
+  const is_active = req.body.is_active !== undefined ? req.body.is_active : null;
   try {
     const [r] = await pool.query(
-      `UPDATE services SET name=?, description=?, color=?, icon=?, is_active=?, sort_order=?
+      `UPDATE services SET name=?, description=?, color=?, icon=?,
+        is_active=COALESCE(?, is_active), sort_order=COALESCE(?, sort_order)
        WHERE id = ? AND company_id = ?`,
-      [name, description, color, icon, is_active, sort_order,
+      [name, description, color, icon, is_active, sort_order ?? null,
        req.params.id, req.user.company_id]
     );
     if (!r.affectedRows) return res.status(404).json({ message: 'Service not found' });

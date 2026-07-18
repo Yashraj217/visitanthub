@@ -308,7 +308,7 @@ export default function BookingPage() {
   }, [selectedDate, selectedEmp, step]);
 
   async function handleSubmit() {
-    if (!form.name.trim() || !form.mobile.trim()) return;
+    if (!form.name.trim() || !form.mobile.trim() || !form.email.trim()) return;
     setSubmitError(null);
 
     // Validate required custom fields
@@ -588,7 +588,7 @@ export default function BookingPage() {
                     onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Email <span className="text-gray-300 font-normal normal-case">(optional)</span></label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Email *</label>
                   <input className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     placeholder="your@email.com" type="email" value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
@@ -642,12 +642,12 @@ export default function BookingPage() {
               )}
 
               <button onClick={handleSubmit}
-                disabled={submitting || !form.name.trim() || !form.mobile.trim()}
+                disabled={submitting || !form.name.trim() || !form.mobile.trim() || !form.email.trim()}
                 className="w-full mt-6 py-3.5 rounded-2xl text-white font-bold text-base transition-all disabled:opacity-50 hover:opacity-90"
                 style={{ background: accentColor }}>
                 {submitting ? 'Submitting…' : 'Submit Booking Request'}
               </button>
-              <p className="text-xs text-gray-400 text-center mt-3">Your booking will be confirmed by the admin. You'll be notified via WhatsApp.</p>
+              <p className="text-xs text-gray-400 text-center mt-3">Your booking will be confirmed by the admin. A confirmation email will be sent to you.</p>
             </div>
           )}
         </div>

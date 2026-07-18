@@ -12,8 +12,8 @@
  *   Variables: 1=associate name, 2=visitor name, 3=visitor mobile, 4=visit time, 5=purpose
  *
  * Template: visit_approved_notification  (Category: Utility)
- *   Body: Hello {{1}}, Your visit has been approved!\n\nYou may now proceed to meet {{2}} ({{3}}).\nLocation: {{4}}\nService: {{5}}\nRef: {{6}}
- *   Variables: 1=visitor name, 2=associate name, 3=designation, 4=location, 5=service, 6=ref
+ *   Body: Hello {{1}},\nYour turn has arrived. Please meet {{2}}.\nOrder No: {{3}}\nLocation: {{4}}\nKindly proceed to the designated area. Thank you!
+ *   Variables: 1=visitor name, 2=associate name+designation, 3=token/ref, 4=location
  *
  * Template: booking_confirmation  (Category: Utility)
  *   Body: Hello {{1}}, your appointment has been booked!\n\nRef: {{2}}\nDate: {{3}}\nTime: {{4}}\nAssociate: {{5}}\nService: {{6}}\n\nYour booking is pending approval. You will be notified once confirmed.
@@ -24,9 +24,29 @@
  *   Variables: 1=visitor name, 2=company name, 3=ref_number, 4=associate name, 5=service, 6=queue ahead
  */
 
+const { pool } = require('../config/database');
+
+function deductToken(companyId, { recipient, messageType, description } = {}) {
+  if (!companyId) return;
+  pool.query('UPDATE companies SET whatsapp_tokens = GREATEST(0, whatsapp_tokens - 1) WHERE id = ?', [companyId])
+    .then(() => pool.query('SELECT whatsapp_tokens FROM companies WHERE id = ?', [companyId]))
+    .then(([[co]]) => pool.query(
+      `INSERT INTO token_ledger (company_id, type, amount, balance_after, description, recipient, message_type)
+       VALUES (?, 'debit', 1, ?, ?, ?, ?)`,
+      [companyId, co.whatsapp_tokens, description || 'WhatsApp message sent', recipient || null, messageType || null]
+    ))
+    .catch(() => {});
+}
+
+function tokenGuard(company) {
+  if (company.whatsapp_tokens !== undefined && company.whatsapp_tokens <= 0)
+    return { sent: false, reason: 'no_tokens' };
+  return null;
+}
+
 // ── Twilio send (plain text — Twilio sandbox supports free-form) ────────────
 
-async function sendViaTwilio({ company, phone, message }) {
+async function sendViaTwilio({ company, phone, message, description, messageType }) {
   try {
     const [sid, token] = company.whatsapp_api_key.split('|');
     const twilio = require('twilio')(sid, token);
@@ -35,6 +55,7 @@ async function sendViaTwilio({ company, phone, message }) {
       to:   `whatsapp:+91${phone}`,
       body: message,
     });
+    deductToken(company.id, { recipient: phone, messageType, description });
     return { sent: true };
   } catch (err) {
     console.error('[WhatsApp Twilio error]', err.message);
@@ -44,10 +65,13 @@ async function sendViaTwilio({ company, phone, message }) {
 
 // ── Meta send (template messages required for business-initiated) ───────────
 
-async function sendViaMetaTemplate({ company, phone, templateName, parameters }) {
+async function sendViaMetaTemplate({ company, phone, templateName, parameters, description, language }) {
   try {
     const axios = require('axios');
-    const [token, phoneNumberId] = company.whatsapp_api_key.split('|');
+    const rawKey = company.whatsapp_provider === 'visitanthub'
+      ? process.env.VH_WHATSAPP_API_KEY
+      : company.whatsapp_api_key;
+    const [token, phoneNumberId] = rawKey.split('|');
     await axios.post(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
@@ -56,7 +80,7 @@ async function sendViaMetaTemplate({ company, phone, templateName, parameters })
         type: 'template',
         template: {
           name: templateName,
-          language: { code: 'en' },
+          language: { code: language || 'en_US' },
           components: [
             {
               type: 'body',
@@ -67,6 +91,7 @@ async function sendViaMetaTemplate({ company, phone, templateName, parameters })
       },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
+    deductToken(company.id, { recipient: phone, messageType: templateName, description: description || `WhatsApp: ${templateName}` });
     return { sent: true };
   } catch (err) {
     console.error('[WhatsApp Meta error]', err.response?.data || err.message);
@@ -77,7 +102,11 @@ async function sendViaMetaTemplate({ company, phone, templateName, parameters })
 // ── Notification: new visit → notify associate ──────────────────────────────
 
 async function sendVisitNotification({ company, employee, visitor, visit }) {
-  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+  if (!company.notif_associate_arrival && company.notif_associate_arrival !== undefined)
+    return { sent: false, reason: 'disabled' };
+  const tg = tokenGuard(company); if (tg) return tg;
+  const isManaged = company.whatsapp_provider === 'visitanthub';
+  if (company.whatsapp_provider === 'none' || (!isManaged && !company.whatsapp_api_key)) {
     console.log('[WhatsApp SKIPPED] No provider configured.');
     return { sent: false, reason: 'no_provider' };
   }
@@ -93,10 +122,10 @@ async function sendVisitNotification({ company, employee, visitor, visit }) {
       `Purpose: ${purpose}\n\n` +
       `Please be ready at your workstation.\n\n` +
       `— ${company.name} Visitor Management`;
-    return sendViaTwilio({ company, phone: employee.phone, message });
+    return sendViaTwilio({ company, phone: employee.phone, message, description: 'Visit arrival → associate', messageType: 'visit_arrival_notification' });
   }
 
-  if (company.whatsapp_provider === 'meta') {
+  if (company.whatsapp_provider === 'meta' || isManaged) {
     return sendViaMetaTemplate({
       company,
       phone:        employee.phone,
@@ -117,40 +146,41 @@ async function sendVisitNotification({ company, employee, visitor, visit }) {
 // ── Notification: visit approved → notify visitor ───────────────────────────
 
 async function sendApprovalNotification({ company, employee, visitor, visit }) {
-  if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
+  if (!company.notif_visit_approved && company.notif_visit_approved !== undefined)
+    return { sent: false, reason: 'disabled' };
+  const tg = tokenGuard(company); if (tg) return tg;
+  const isManaged = company.whatsapp_provider === 'visitanthub';
+  if (company.whatsapp_provider === 'none' || (!isManaged && !company.whatsapp_api_key)) {
     console.log('[WhatsApp SKIPPED] No provider configured.');
     return { sent: false, reason: 'no_provider' };
   }
 
   const location    = employee.location || 'Reception';
-  const serviceName = visit.service_name || visit.purpose || '—';
-  const ref         = visit.ref_number || String(visit.id);
-  const designation = employee.designation || 'Associate';
+  const token       = visit.ref_number || String(visit.id);
+  const assocLabel  = employee.designation
+    ? `${employee.name} (${employee.designation})`
+    : employee.name;
 
   if (company.whatsapp_provider === 'twilio') {
     const message =
       `Hello ${visitor.name},\n\n` +
-      `✅ Your visit has been *approved*!\n\n` +
-      `You may now proceed to meet *${employee.name}* (${designation}).\n` +
-      `📍 Location: ${location}\n` +
-      `Service: ${serviceName}\n` +
-      `Ref: ${ref}\n\n` +
-      `— ${company.name}`;
-    return sendViaTwilio({ company, phone: visitor.mobile, message });
+      `✅ Your visit has been approved! You can now meet *${assocLabel}*.\n\n` +
+      `🎫 Order No: *${token}*\n` +
+      `📍 Location: ${location}\n\n` +
+      `Please proceed to the designated area. Thank you for visiting us.`;
+    return sendViaTwilio({ company, phone: visitor.mobile, message, description: 'Visit approved → visitor', messageType: 'visit_approved_notification' });
   }
 
-  if (company.whatsapp_provider === 'meta') {
+  if (company.whatsapp_provider === 'meta' || isManaged) {
     return sendViaMetaTemplate({
       company,
       phone:        visitor.mobile,
       templateName: 'visit_approved_notification',
       parameters:   [
         visitor.name,
-        employee.name,
-        designation,
+        assocLabel,
+        token,
         location,
-        serviceName,
-        ref,
       ],
     });
   }
@@ -161,6 +191,9 @@ async function sendApprovalNotification({ company, employee, visitor, visit }) {
 // ── Notification: appointment booked → confirm to visitor ───────────────────
 
 async function sendBookingConfirmation({ company, booking }) {
+  if (!company.notif_booking_confirmed && company.notif_booking_confirmed !== undefined)
+    return { sent: false, reason: 'disabled' };
+  const tg = tokenGuard(company); if (tg) return tg;
   if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
     return { sent: false, reason: 'no_provider' };
   }
@@ -181,10 +214,10 @@ async function sendBookingConfirmation({ company, booking }) {
       `🏥 Service: ${service}\n\n` +
       `Your booking is *pending approval*. You will be notified once confirmed.\n\n` +
       `— ${company.name}`;
-    return sendViaTwilio({ company, phone: booking.visitor_mobile, message });
+    return sendViaTwilio({ company, phone: booking.visitor_mobile, message, description: 'Booking confirmation → visitor', messageType: 'booking_confirmation' });
   }
 
-  if (company.whatsapp_provider === 'meta') {
+  if (company.whatsapp_provider === 'meta' || isManaged) {
     return sendViaMetaTemplate({
       company,
       phone:        booking.visitor_mobile,
@@ -206,6 +239,9 @@ async function sendBookingConfirmation({ company, booking }) {
 // ── Notification: visitor checked in → confirm to visitor ───────────────────
 
 async function sendCheckInConfirmation({ company, visitor, visit, employee, queueAhead }) {
+  if (!company.notif_visitor_checkin && company.notif_visitor_checkin !== undefined)
+    return { sent: false, reason: 'disabled' };
+  const tg = tokenGuard(company); if (tg) return tg;
   if (company.whatsapp_provider === 'none' || !company.whatsapp_api_key) {
     return { sent: false, reason: 'no_provider' };
   }
@@ -225,10 +261,10 @@ async function sendCheckInConfirmation({ company, visitor, visit, employee, queu
       `👥 Visitors ahead: ${ahead}\n\n` +
       `You will be notified once your visit is approved.\n\n` +
       `— ${company.name}`;
-    return sendViaTwilio({ company, phone: visitor.mobile, message });
+    return sendViaTwilio({ company, phone: visitor.mobile, message, description: 'Check-in confirmation → visitor', messageType: 'visitor_checkin_confirmation' });
   }
 
-  if (company.whatsapp_provider === 'meta') {
+  if (company.whatsapp_provider === 'meta' || isManaged) {
     return sendViaMetaTemplate({
       company,
       phone:        visitor.mobile,
@@ -247,4 +283,37 @@ async function sendCheckInConfirmation({ company, visitor, visit, employee, queu
   return { sent: false, reason: 'unsupported_provider' };
 }
 
-module.exports = { sendVisitNotification, sendApprovalNotification, sendBookingConfirmation, sendCheckInConfirmation };
+// ── Notification: revisit reminder → visitor ─────────────────────────────────
+
+async function sendRevisitReminder({ company, visitor, dateStr, associateName }) {
+  const tg = tokenGuard(company); if (tg) return tg;
+  const isManaged = company.whatsapp_provider === 'visitanthub';
+  if (company.whatsapp_provider === 'none' || (!isManaged && !company.whatsapp_api_key)) {
+    return { sent: false, reason: 'no_provider' };
+  }
+
+  const contactInfo = company.phone ? `${company.name}, ${company.phone}` : company.name;
+  const senderName  = associateName || company.name;
+
+  if (company.whatsapp_provider === 'twilio') {
+    const message =
+      `Hello ${visitor.name},\n\n` +
+      `This is a friendly reminder from *${senderName}* that your next visit is scheduled for *${dateStr}*.\n\n` +
+      `${contactInfo}. We look forward to seeing you!`;
+    return sendViaTwilio({ company, phone: visitor.mobile, message, description: 'Revisit reminder → visitor', messageType: 'revisit_reminder' });
+  }
+
+  if (company.whatsapp_provider === 'meta' || isManaged) {
+    return sendViaMetaTemplate({
+      company,
+      phone:        visitor.mobile,
+      templateName: 'revisit_reminder',
+      parameters:   [visitor.name, senderName, dateStr, contactInfo],
+      description:  'Revisit reminder → visitor',
+    });
+  }
+
+  return { sent: false, reason: 'unsupported_provider' };
+}
+
+module.exports = { sendVisitNotification, sendApprovalNotification, sendBookingConfirmation, sendCheckInConfirmation, sendRevisitReminder };

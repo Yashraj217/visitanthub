@@ -117,9 +117,19 @@ export default function MobileEntry() {
                 />
               </div>
               <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-base">
-                {loading ? 'Checking…' : 'Continue →'}
+                {loading ? 'Checking…' : 'Check In Now →'}
               </button>
             </form>
+
+            <div className="mt-4 pt-4 border-t border-gray-100 text-center">
+              <p className="text-sm text-gray-400 mb-2">Coming on another day?</p>
+              <a
+                href={`/book/${slug}`}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+              >
+                📅 Book an Appointment
+              </a>
+            </div>
           </div>
 
           {/* Associates availability */}
@@ -136,11 +146,14 @@ export default function MobileEntry() {
                       {a.designation && <p className="text-xs text-gray-400 truncate">{a.designation}</p>}
                     </div>
                     <div className="text-right shrink-0">
-                      {a.slots.map((s, j) => (
-                        <p key={j} className="text-xs text-indigo-600 font-medium">
-                          {fmt12(s.start_time)} – {fmt12(s.end_time)}
-                        </p>
-                      ))}
+                      {a.slots.length > 0
+                        ? a.slots.map((s, j) => (
+                            <p key={j} className="text-xs text-indigo-600 font-medium">
+                              {fmt12(s.start_time)} – {fmt12(s.end_time)}
+                            </p>
+                          ))
+                        : <p className="text-xs text-gray-400 italic">Hours vary</p>
+                      }
                     </div>
                   </div>
                 ))}

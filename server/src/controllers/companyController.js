@@ -102,15 +102,38 @@ async function updateProfile(req, res) {
 
 // Company admin: update WhatsApp settings
 async function updateSettings(req, res) {
-  const { whatsapp_provider, whatsapp_api_key, whatsapp_from } = req.body;
+  const {
+    whatsapp_provider, whatsapp_api_key, whatsapp_from,
+    notif_associate_arrival, notif_visitor_checkin,
+    notif_visit_approved, notif_booking_confirmed,
+  } = req.body;
+  const bool = v => (v === false || v === 0 || v === '0') ? 0 : 1;
   try {
-    await pool.query(
-      `UPDATE companies SET whatsapp_provider=?, whatsapp_api_key=?, whatsapp_from=?
-       WHERE id = ?`,
-      [whatsapp_provider, whatsapp_api_key, whatsapp_from, req.user.company_id]
-    );
+    // For own-account meta: update key/from only when explicitly provided
+    const isOwnMeta = whatsapp_provider === 'meta';
+    let sql = `UPDATE companies SET
+         whatsapp_provider=?,
+         notif_associate_arrival=?, notif_visitor_checkin=?,
+         notif_visit_approved=?, notif_booking_confirmed=?`;
+    const params = [whatsapp_provider,
+      bool(notif_associate_arrival), bool(notif_visitor_checkin),
+      bool(notif_visit_approved), bool(notif_booking_confirmed)];
+
+    if (isOwnMeta && whatsapp_api_key !== undefined) {
+      sql += ', whatsapp_api_key=?';
+      params.push(whatsapp_api_key || null);
+    }
+    if (isOwnMeta && whatsapp_from !== undefined) {
+      sql += ', whatsapp_from=?';
+      params.push(whatsapp_from || null);
+    }
+
+    sql += ' WHERE id = ?';
+    params.push(req.user.company_id);
+    await pool.query(sql, params);
     res.json({ message: 'Settings updated' });
   } catch (err) {
+    console.error('[updateSettings]', err.message);
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -419,9 +442,28 @@ async function getCharts(req, res) {
   }
 }
 
+async function getReferral(req, res) {
+  try {
+    const [[co]] = await pool.query(
+      'SELECT referral_code, whatsapp_tokens, whatsapp_provider FROM companies WHERE id = ?',
+      [req.user.company_id]
+    );
+    if (!co) return res.status(404).json({ message: 'Company not found' });
+    const CLIENT_URL = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({
+      referral_code:    co.referral_code,
+      referral_url:     `${CLIENT_URL}/register?ref=${co.referral_code}`,
+      whatsapp_tokens:  co.whatsapp_tokens,
+      whatsapp_enabled: co.whatsapp_provider && co.whatsapp_provider !== 'none',
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   listCompanies, getCompany, updateStatus, deleteCompany,
   getProfile, updateProfile, updateSettings, getStats, getCharts,
   updateRefSettings, resetRefCounter, updateServiceRefPrefix,
-  uploadCompanyLogo, uploadServiceLogo,
+  uploadCompanyLogo, uploadServiceLogo, getReferral,
 };

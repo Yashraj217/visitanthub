@@ -31,9 +31,9 @@ export default function AdminVisitsScreen({ navigation }) {
   const [visits,      setVisits]      = useState([]);
   const [page,        setPage]        = useState(1);
   const [hasMore,     setHasMore]     = useState(false);
-  const [filter,      setFilter]      = useState('all');
+  const [filter,      setFilter]      = useState('pending');
   const [search,      setSearch]      = useState('');
-  const [sortOrder,   setSortOrder]   = useState('desc');
+  const [sortOrder,   setSortOrder]   = useState('asc');
   const [loading,     setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);

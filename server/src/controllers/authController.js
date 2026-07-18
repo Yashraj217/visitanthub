@@ -22,7 +22,9 @@ async function login(req, res) {
     const [rows] = await pool.query(
       `SELECT u.*, c.name AS company_name, c.slug AS company_slug, c.status AS company_status,
               c.logo_url AS company_logo_url, c.sidebar_color AS company_sidebar_color,
-              c.timezone AS company_timezone
+              c.timezone AS company_timezone, c.stages_enabled AS company_stages_enabled,
+              c.waiting_status_enabled AS company_waiting_status_enabled,
+              c.plan AS company_plan, c.plan_expires_at AS company_plan_expires_at
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
        WHERE u.email = ?`,
@@ -54,9 +56,13 @@ async function login(req, res) {
         company_name: user.company_name,
         company_slug: user.company_slug,
         company_logo:          user.company_logo_url    || null,
-        company_sidebar_color: user.company_sidebar_color || '#111827',
-        company_timezone:      user.company_timezone || 'UTC',
-        employee_id:           user.employee_id || null,
+        company_sidebar_color:  user.company_sidebar_color || '#111827',
+        company_timezone:       user.company_timezone || 'UTC',
+        company_stages_enabled:          !!user.company_stages_enabled,
+        company_waiting_status_enabled:  !!user.company_waiting_status_enabled,
+        company_plan:                    user.company_plan || 'starter',
+        company_plan_expires_at:         user.company_plan_expires_at || null,
+        employee_id:                     user.employee_id || null,
       },
     });
   } catch (err) {
@@ -65,9 +71,16 @@ async function login(req, res) {
   }
 }
 
+const REF_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genReferralCode() {
+  let c = 'VH';
+  for (let i = 0; i < 6; i++) c += REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)];
+  return c;
+}
+
 async function register(req, res) {
   const { company_name, company_email, company_phone, company_address,
-          admin_name, admin_email, admin_password } = req.body;
+          admin_name, admin_email, admin_password, referral_code } = req.body;
 
   if (!company_name || !company_email || !admin_name || !admin_email || !admin_password) {
     return res.status(400).json({ message: 'All required fields must be filled' });
@@ -104,10 +117,18 @@ async function register(req, res) {
     const verifyToken = crypto.randomBytes(32).toString('hex');
     const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
+    // Generate unique referral code for new company
+    let newRefCode, refAttempts = 0;
+    do {
+      newRefCode = genReferralCode();
+      const [[ex]] = await conn.query('SELECT id FROM companies WHERE referral_code = ?', [newRefCode]);
+      if (!ex) break;
+    } while (++refAttempts < 20);
+
     const [companyResult] = await conn.query(
-      `INSERT INTO companies (name, slug, email, phone, address, status, email_verify_token, email_verify_expires)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [company_name.trim(), slug, company_email.toLowerCase(), company_phone, company_address, verifyToken, verifyExpires]
+      `INSERT INTO companies (name, slug, email, phone, address, status, email_verify_token, email_verify_expires, referral_code, whatsapp_tokens)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, 200)`,
+      [company_name.trim(), slug, company_email.toLowerCase(), company_phone, company_address, verifyToken, verifyExpires, newRefCode]
     );
 
     const hashed = await bcrypt.hash(admin_password, 10);
@@ -117,7 +138,32 @@ async function register(req, res) {
       [companyResult.insertId, admin_name.trim(), admin_email.toLowerCase(), hashed]
     );
 
+    // Log the initial 200-token grant in the ledger
+    await conn.query(
+      `INSERT INTO token_ledger (company_id, type, amount, balance_after, description)
+       VALUES (?, 'credit', 200, 200, 'Welcome bonus — initial token grant')`,
+      [companyResult.insertId]
+    );
+
     await conn.commit();
+
+    // Credit referring company with 250 WhatsApp tokens (fire-and-forget after commit)
+    if (referral_code?.trim()) {
+      pool.query(
+        'UPDATE companies SET whatsapp_tokens = whatsapp_tokens + 250 WHERE referral_code = ?',
+        [referral_code.trim().toUpperCase()]
+      ).then(() =>
+        pool.query('SELECT id, whatsapp_tokens FROM companies WHERE referral_code = ?', [referral_code.trim().toUpperCase()])
+      ).then(([[ref]]) => {
+        if (ref) {
+          pool.query(
+            `INSERT INTO token_ledger (company_id, type, amount, balance_after, description)
+             VALUES (?, 'credit', 250, ?, 'Referral bonus — new company registered')`,
+            [ref.id, ref.whatsapp_tokens]
+          );
+        }
+      }).catch(() => {});
+    }
 
     const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
     const verifyUrl = `${CLIENT_URL}/verify-email?token=${verifyToken}`;
@@ -147,7 +193,10 @@ async function getMe(req, res) {
     const [rows] = await pool.query(
       `SELECT u.id, u.name, u.email, u.role, u.company_id, u.employee_id,
               c.name AS company_name, c.slug AS company_slug, c.logo_url AS company_logo,
-              c.sidebar_color AS company_sidebar_color, c.timezone AS company_timezone
+              c.sidebar_color AS company_sidebar_color, c.timezone AS company_timezone,
+              c.stages_enabled AS company_stages_enabled,
+              c.waiting_status_enabled AS company_waiting_status_enabled,
+              c.plan AS company_plan, c.plan_expires_at AS company_plan_expires_at
        FROM users u
        LEFT JOIN companies c ON c.id = u.company_id
        WHERE u.id = ?`,

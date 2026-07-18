@@ -1,33 +1,11 @@
-const https = require('https');
 const { pool } = require('../config/database');
 const { sendVisitNotification, sendCheckInConfirmation } = require('../services/whatsapp');
 const { localDateToUtcRange } = require('../utils/tz');
 const { cacheGet, cacheSet } = require('../config/redis');
 
 const { promoteNextReady } = require('./visitController');
-
-function sendExpoPush({ token, title, body, data }) {
-  const payload = JSON.stringify({ to: token, title, body, data: data || {}, sound: 'default' });
-  const req = https.request({
-    hostname: 'exp.host',
-    path: '/--/api/v2/push/send',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-    },
-  }, res => {
-    let raw = '';
-    res.on('data', chunk => { raw += chunk; });
-    res.on('end', () => {
-      if (res.statusCode !== 200) console.error('[ExpoPush] HTTP', res.statusCode, raw);
-    });
-  });
-  req.on('error', err => console.error('[ExpoPush] Error:', err.message));
-  req.write(payload);
-  req.end();
-}
+const { broadcast } = require('../services/displayBroadcaster');
+const { sendExpoPush } = require('../services/pushNotification');
 
 /**
  * Generate and atomically increment the reference number counter.
@@ -142,26 +120,29 @@ async function getCompanyBySlug(req, res) {
       [company.id]
     );
 
-    // Today's associate availability
+    // Today's associate availability — all active employees, with today's slots if configured
     const tz = company.timezone || 'Asia/Kolkata';
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
     const dayOfWeek = new Date(todayStr + 'T12:00:00').getDay(); // 0=Sun…6=Sat
     const [availRows] = await pool.query(
-      `SELECT aa.employee_id, aa.start_time, aa.end_time,
-              e.name AS employee_name, e.designation
-       FROM associate_availability aa
-       JOIN employees e ON e.id = aa.employee_id
-       WHERE aa.company_id = ? AND aa.day_of_week = ? AND e.status = 'active'
+      `SELECT e.id AS employee_id, e.name AS employee_name, e.designation,
+              aa.start_time, aa.end_time
+       FROM employees e
+       LEFT JOIN associate_availability aa
+         ON aa.employee_id = e.id AND aa.company_id = e.company_id AND aa.day_of_week = ?
+       WHERE e.company_id = ? AND e.status = 'active'
        ORDER BY e.name, aa.start_time`,
-      [company.id, dayOfWeek]
+      [dayOfWeek, company.id]
     );
-    // Group slots by employee
+    // Group slots by employee; include employees with no slots (slots = [])
     const availMap = new Map();
     availRows.forEach(r => {
       if (!availMap.has(r.employee_id)) {
         availMap.set(r.employee_id, { employee_name: r.employee_name, designation: r.designation, slots: [] });
       }
-      availMap.get(r.employee_id).slots.push({ start_time: r.start_time, end_time: r.end_time });
+      if (r.start_time) {
+        availMap.get(r.employee_id).slots.push({ start_time: r.start_time, end_time: r.end_time });
+      }
     });
     const availability = [...availMap.values()];
 
@@ -244,10 +225,23 @@ async function registerVisit(req, res) {
       [company.id, mobile.trim()]
     );
 
+    // Check for a confirmed appointment today — if found, use its employee/service
+    const apptTz   = company.timezone || 'UTC';
+    const apptDate = new Date().toLocaleDateString('en-CA', { timeZone: apptTz });
+    const [[appt]] = await conn.query(
+      `SELECT * FROM scheduled_visits
+       WHERE company_id = ? AND visitor_mobile = ? AND scheduled_date = ?
+         AND status = 'confirmed' AND visit_id IS NULL
+       ORDER BY scheduled_time ASC LIMIT 1`,
+      [company.id, mobile.trim(), apptDate]
+    );
+    const effectiveEmployeeId = appt?.employee_id || employee_id;
+    const effectiveServiceId  = appt?.service_id  || service_id;
+
     // Validate employee
     const [employees] = await conn.query(
       "SELECT * FROM employees WHERE id = ? AND company_id = ? AND status = 'active'",
-      [employee_id, company.id]
+      [effectiveEmployeeId, company.id]
     );
     if (!employees.length) {
       await conn.rollback();
@@ -256,10 +250,10 @@ async function registerVisit(req, res) {
     const employee = employees[0];
 
     // Validate employee is assigned to the selected service
-    if (service_id) {
+    if (effectiveServiceId) {
       const [assignment] = await conn.query(
         'SELECT id FROM employee_services WHERE employee_id = ? AND service_id = ?',
-        [employee_id, service_id]
+        [effectiveEmployeeId, effectiveServiceId]
       );
       if (!assignment.length) {
         await conn.rollback();
@@ -268,23 +262,23 @@ async function registerVisit(req, res) {
     }
 
     // Resolve service (with ref_prefix + counter)
-    let resolvedServiceId = null;
-    let resolvedServiceName = purpose || null;
-    let resolvedService = null;
-    if (service_id) {
+    let resolvedServiceId   = null;
+    let resolvedServiceName = appt?.service_name || purpose || null;
+    let resolvedService     = null;
+    if (effectiveServiceId) {
       const [svcs] = await conn.query(
         'SELECT id, name, ref_prefix, ref_counter, ref_last_reset FROM services WHERE id = ? AND company_id = ? AND is_active = 1',
-        [service_id, company.id]
+        [effectiveServiceId, company.id]
       );
       if (svcs.length) {
-        resolvedService    = svcs[0];
-        resolvedServiceId  = svcs[0].id;
+        resolvedService     = svcs[0];
+        resolvedServiceId   = svcs[0].id;
         resolvedServiceName = svcs[0].name;
       }
     }
 
-    // Generate reference number (inside transaction for atomicity)
-    const refNumber = await generateRefNumber(conn, company, resolvedService);
+    // Use booking_ref for appointments; otherwise generate a fresh ref number
+    const refNumber = appt ? appt.booking_ref : await generateRefNumber(conn, company, resolvedService);
 
     // Create visit
     const [visitResult] = await conn.query(
@@ -296,22 +290,31 @@ async function registerVisit(req, res) {
     );
     const visitId = visitResult.insertId;
 
-    // Auto-assign default stage if configured
-    const [[defaultStage]] = await conn.query(
-      'SELECT id, name, color, employee_id FROM visit_stages WHERE company_id = ? AND is_default = 1 LIMIT 1',
-      [company.id]
-    );
-    if (defaultStage) {
-      const stgFields = ['current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?'];
-      const stgValues = [defaultStage.id, defaultStage.name, defaultStage.color];
-      if (defaultStage.employee_id) { stgFields.push('employee_id = ?'); stgValues.push(defaultStage.employee_id); }
-      stgValues.push(visitId);
-      await conn.query(`UPDATE visits SET ${stgFields.join(', ')} WHERE id = ?`, stgValues);
+    // Link scheduled_visit so auto check-in won't create a duplicate
+    if (appt) {
       await conn.query(
-        `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
-         VALUES (?, ?, ?, ?, NULL, 'Auto')`,
-        [visitId, defaultStage.id, defaultStage.name, defaultStage.color]
+        'UPDATE scheduled_visits SET visit_id = ?, status = ? WHERE id = ?',
+        [visitId, 'checked_in', appt.id]
       );
+    }
+
+    // Auto-assign default stage only when stage tracking is enabled for this company
+    if (company.stages_enabled) {
+      const [[defaultStage]] = await conn.query(
+        'SELECT id, name, color FROM visit_stages WHERE company_id = ? AND is_default = 1 LIMIT 1',
+        [company.id]
+      );
+      if (defaultStage) {
+        await conn.query(
+          'UPDATE visits SET current_stage_id = ?, current_stage_name = ?, current_stage_color = ? WHERE id = ?',
+          [defaultStage.id, defaultStage.name, defaultStage.color, visitId]
+        );
+        await conn.query(
+          `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
+           VALUES (?, ?, ?, ?, NULL, 'Auto')`,
+          [visitId, defaultStage.id, defaultStage.name, defaultStage.color]
+        );
+      }
     }
 
     // Store custom field values (visitor-submitted) and pre-create rows for hidden fields
@@ -417,6 +420,7 @@ async function registerVisit(req, res) {
       whatsapp_sent:    result.sent,
       queue_ahead:      Number(queue_ahead),
     });
+    broadcast(company.id);
 
     // Send check-in confirmation to visitor (fire-and-forget)
     sendCheckInConfirmation({
@@ -454,6 +458,7 @@ async function getVisitorHistory(req, res) {
 
     const [visits] = await pool.query(
       `SELECT v.id, v.ref_number, v.visit_time, v.status, v.service_name, v.purpose,
+              v.next_visit_date,
               emp.name AS employee_name, emp.designation,
               COUNT(p.id) AS photo_count
        FROM visits v
@@ -476,7 +481,10 @@ async function getVisitorHistory(req, res) {
 async function listVisitors(req, res) {
   try {
     const [rows] = await pool.query(
-      `SELECT v.*, COUNT(vis.id) AS total_visits
+      `SELECT v.*, COUNT(vis.id) AS total_visits,
+              (SELECT MAX(vt.next_visit_date) FROM visits vt
+               WHERE vt.visitor_id = v.id AND vt.company_id = v.company_id
+               AND vt.next_visit_date IS NOT NULL) AS next_visit_date
        FROM visitors v
        LEFT JOIN visits vis ON vis.visitor_id = v.id
        WHERE v.company_id = ?
@@ -490,4 +498,84 @@ async function listVisitors(req, res) {
   }
 }
 
-module.exports = { getCompanyBySlug, checkMobile, registerVisit, listVisitors, getVisitorHistory };
+// PUT /visitors/:visitor_id/next-visit — set next_visit_date on the visitor's most recent visit
+async function setNextVisitDate(req, res) {
+  const { visitor_id } = req.params;
+  const { next_visit_date } = req.body;
+  const company_id = req.user.company_id;
+  try {
+    const [[visit]] = await pool.query(
+      'SELECT id FROM visits WHERE visitor_id = ? AND company_id = ? ORDER BY visit_time DESC LIMIT 1',
+      [visitor_id, company_id]
+    );
+    if (!visit) return res.status(404).json({ message: 'No visits found for this visitor' });
+
+    const date = next_visit_date ? new Date(next_visit_date) : null;
+    if (date && isNaN(date.getTime())) return res.status(400).json({ message: 'Invalid date' });
+
+    await pool.query(
+      'UPDATE visits SET next_visit_date = ? WHERE id = ?',
+      [date ? date.toISOString().slice(0, 10) : null, visit.id]
+    );
+    res.json({ success: true, next_visit_date: date ? date.toISOString().slice(0, 10) : null });
+  } catch (err) {
+    console.error('[setNextVisitDate]', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /visitors/:visitor_id/revisit-reminder
+async function sendRevisitReminderNotif(req, res) {
+  const { visitor_id } = req.params;
+  const company_id = req.user.company_id;
+  try {
+    const [[visitor]] = await pool.query(
+      'SELECT id, name, mobile FROM visitors WHERE id = ? AND company_id = ?',
+      [visitor_id, company_id]
+    );
+    if (!visitor) return res.status(404).json({ message: 'Visitor not found' });
+
+    // Get the latest next_visit_date along with the associate for this visitor
+    const [[nvRow]] = await pool.query(
+      `SELECT v.id AS visit_id, v.next_visit_date, e.name AS employee_name, e.designation
+       FROM visits v
+       LEFT JOIN employees e ON e.id = v.employee_id
+       WHERE v.visitor_id = ? AND v.company_id = ? AND v.next_visit_date IS NOT NULL
+       ORDER BY v.next_visit_date DESC LIMIT 1`,
+      [visitor_id, company_id]
+    );
+    if (!nvRow?.next_visit_date) return res.status(400).json({ message: 'No next visit date set for this visitor' });
+
+    const rawDate = nvRow.next_visit_date;
+    const dateIso = rawDate instanceof Date
+      ? rawDate.toISOString().slice(0, 10)
+      : String(rawDate).slice(0, 10);
+    const dateStr = new Date(dateIso + 'T12:00:00')
+      .toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const associateName = nvRow.employee_name || null;
+
+    const [[company]] = await pool.query(
+      `SELECT id, name, phone, whatsapp_provider, whatsapp_api_key, whatsapp_from, whatsapp_tokens
+       FROM companies WHERE id = ?`,
+      [company_id]
+    );
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+
+    const { sendRevisitReminder } = require('../services/whatsapp');
+    const result = await sendRevisitReminder({ company, visitor, dateStr, associateName });
+
+    if (result.sent) {
+      const now = new Date();
+      await pool.query('UPDATE visits SET last_reminded_at = ? WHERE id = ?', [now, nvRow.visit_id]);
+      res.json({ success: true, message: 'Reminder sent via WhatsApp', last_reminded_at: now.toISOString() });
+    } else {
+      res.status(422).json({ success: false, message: result.reason || 'Failed to send reminder' });
+    }
+  } catch (err) {
+    console.error('[sendRevisitReminderNotif]', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { getCompanyBySlug, checkMobile, registerVisit, listVisitors, getVisitorHistory, setNextVisitDate, sendRevisitReminderNotif };

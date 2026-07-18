@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/serviceController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { checkServiceLimit } = require('../middleware/planLimits');
 
 router.use(authenticate);
 
@@ -14,7 +15,7 @@ router.get('/my-services',   requireRole('company_user'),                  ctrl.
 router.get('/', requireRole('company_admin', 'super_admin'), ctrl.listServices);
 
 router.use(requireRole('company_admin'));
-router.post('/',                             ctrl.createService);
+router.post('/',                             checkServiceLimit, ctrl.createService);
 router.put('/:id',                           ctrl.updateService);
 router.delete('/:id',                        ctrl.deleteService);
 router.get('/:serviceId/fields',             ctrl.listFields);

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { View, Text, Image, Animated, StyleSheet, Dimensions, Modal } from 'react-native';
 
 const { width } = Dimensions.get('window');
-const ICON_SIZE = width * 0.30;
+const ICON_SIZE = width * 0.16;
 
 export default function SplashScreen({ onDone }) {
   const scale         = useRef(new Animated.Value(0.4)).current;

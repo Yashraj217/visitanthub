@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useNow, fmtElapsed } from '../../hooks/useNow';
 import VisitorHistoryModal from '../../components/VisitorHistoryModal';
 import { useAuth } from '../../context/AuthContext';
-import { todayInTz, formatInTz } from '../../utils/tz';
+import { formatInTz } from '../../utils/tz';
 import { exportToExcel } from '../../utils/exportExcel';
 
 const POLL_INTERVAL = 15_000;
@@ -51,8 +51,8 @@ export default function MyVisits() {
   const [historyVisitorId, setHistoryVisitorId] = useState(null);
 
   // Stages
-  const [stages,        setStages]        = useState([]);
-  const [advancingStage, setAdvancingStage] = useState(false);
+  const [stages,          setStages]          = useState([]);
+  const [advancingStage,  setAdvancingStage]  = useState(false);
   const now = useNow(30_000);
 
   // Photos
@@ -68,6 +68,11 @@ export default function MyVisits() {
 
   const [search, setSearch] = useState('');
 
+  // Next visit
+  const [nextVisitPreset,  setNextVisitPreset]  = useState(null);
+  const [nextVisitCustom,  setNextVisitCustom]  = useState('');
+  const [savingNextVisit,  setSavingNextVisit]  = useState(false);
+
   // Reassign associate
   const [reassignId,     setReassignId]     = useState(null);
   const [reassignList,   setReassignList]   = useState([]);
@@ -78,8 +83,7 @@ export default function MyVisits() {
   const knownIdsRef = useRef(new Set());
   const doPollRef   = useRef(null);
 
-  const today = todayInTz(companyTz);
-  const [filterDate,     setFilterDate]     = useState(today);
+  const [filterDate,     setFilterDate]     = useState('');
   const [filterStatuses, setFilterStatuses] = useState(['pending', 'approved']);
   const [filterService,  setFilterService]  = useState('');
   const [sortOrder,      setSortOrder]      = useState('asc');
@@ -91,10 +95,8 @@ export default function MyVisits() {
 
     api.get('/services/my-services').then(({ data }) => {
       setServices(data);
-      if (data.length === 1) {
-        // Only one service assigned — pre-select it so custom fields show immediately
-        setFilterService(String(data[0].id));
-      }
+      // Do NOT auto-apply service filter — transferred visits may have a different service_id
+      // and would be silently hidden. Doctor can filter manually if needed.
     }).catch(() => {});
   }, []);
 
@@ -200,9 +202,14 @@ export default function MyVisits() {
   // Custom field columns are scoped to the currently filtered service only.
   // Services do not share custom fields — showing all fields from all services
   // alongside each other creates empty cells and cross-service confusion.
+  // Scope hidden field columns to the selected service filter.
+  // If no filter is active but the doctor handles only one service, default to that service's fields
+  // so custom columns still appear even without an explicit service selection.
   const scopedHiddenFields = filterService
     ? allHiddenFields.filter(f => f.service_id === Number(filterService))
-    : [];
+    : services.length === 1
+      ? allHiddenFields.filter(f => f.service_id === services[0]?.id)
+      : [];
   const gridHiddenCols = scopedHiddenFields.filter(f => visibleHiddenCols?.has(f.id));
 
   const totalHidden = STANDARD_COLS.length + scopedHiddenFields.length;
@@ -246,36 +253,47 @@ export default function MyVisits() {
   }
 
   // ── Stage advance ─────────────────────────────────────────────────────────
+  const [waitingLoading, setWaitingLoading] = useState(false);
+
   async function advanceStage(visitId, stageId) {
     setAdvancingStage(true);
     try {
       const { data } = await api.put(`/visits/${visitId}/stage`, { stageId });
+      // If visitor was transferred to a new department (status_reset=pending) or final stage,
+      // close the modal — this visit no longer belongs to us
+      if (data.is_final || data.status_reset === 'pending') {
+        toast.success(data.is_final ? 'Visit completed' : `Sent to ${data.current_stage_name}`);
+        closeDetail();
+        load(sortOrder);
+        return;
+      }
       setDetail(d => d ? {
         ...d,
         current_stage_id:    data.current_stage_id,
         current_stage_name:  data.current_stage_name,
         current_stage_color: data.current_stage_color,
         stage_logs:          data.logs,
-        ...(data.status_reset ? { status: data.status_reset } : {}),
       } : d);
       setVisits(vs => vs.map(v => v.id === visitId ? {
         ...v,
         current_stage_id:    data.current_stage_id,
         current_stage_name:  data.current_stage_name,
         current_stage_color: data.current_stage_color,
-        ...(data.status_reset ? { status: data.status_reset } : {}),
       } : v));
+      toast.success(`Moved to: ${data.current_stage_name}`);
     } catch { toast.error('Failed to update stage'); }
     finally { setAdvancingStage(false); }
   }
 
   async function handleStageWaiting(visitId, stage_status) {
+    setWaitingLoading(true);
     try {
       const { data } = await api.put(`/visits/${visitId}/stage-waiting`, { stage_status });
       const patch = { stage_status: data.stage_status, stage_waiting_since: data.stage_waiting_since };
       setDetail(d => d ? { ...d, ...patch } : d);
       setVisits(vs => vs.map(v => v.id === visitId ? { ...v, ...patch } : v));
     } catch { toast.error('Failed to update waiting status'); }
+    finally { setWaitingLoading(false); }
   }
 
   // ── Detail modal ──────────────────────────────────────────────────────────
@@ -283,6 +301,8 @@ export default function MyVisits() {
     setSelected(null);
     setDetail(null);
     setPhotos([]);
+    setNextVisitPreset(null);
+    setNextVisitCustom('');
     setLightbox(null);
     load();
   }
@@ -376,6 +396,19 @@ export default function MyVisits() {
     } finally {
       setReassignSaving(false);
     }
+  }
+
+  async function saveNextVisit(dateStr) {
+    if (!detail) return;
+    setSavingNextVisit(true);
+    try {
+      await api.put(`/visits/${detail.id}/next-visit`, { next_visit_date: dateStr });
+      setDetail(d => ({ ...d, next_visit_date: dateStr }));
+      setNextVisitPreset(null);
+      setNextVisitCustom('');
+      toast.success('Next visit scheduled');
+    } catch { toast.error('Failed to save'); }
+    finally { setSavingNextVisit(false); }
   }
 
   async function saveHiddenFields() {
@@ -863,21 +896,33 @@ export default function MyVisits() {
                 {stages.length > 0 && (
                   <div className="border-t pt-4">
                     <p className="font-semibold text-gray-700 mb-3 text-sm">Stage Progress</p>
+
+                    {/* Stage pills — click any non-current stage to move there (any direction) */}
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {stages.map((stage, i) => {
                         const isCurrent = detail.current_stage_id === stage.id;
                         const isDone = (detail.stage_logs || []).some(l => l.stage_name === stage.name);
+                        const canMove = (detail.status === 'pending' || detail.status === 'approved') && !isCurrent;
                         return (
                           <span key={stage.id} className="flex items-center gap-1">
                             <button
-                              onClick={() => advanceStage(detail.id, isCurrent ? null : stage.id)}
-                              disabled={advancingStage}
-                              className="text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-colors disabled:opacity-50"
+                              disabled={!canMove || advancingStage}
+                              onClick={() => {
+                                if (!canMove) return;
+                                const empChange = stage.employee_id && stage.employee_id !== detail.employee_id;
+                                const msg = empChange
+                                  ? `Move to "${stage.name}"?\nVisitor will be transferred to ${stage.employee_name}.`
+                                  : `Move to "${stage.name}"?`;
+                                if (!window.confirm(msg)) return;
+                                advanceStage(detail.id, stage.id);
+                              }}
+                              title={canMove ? `Move to "${stage.name}"` : stage.name}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-all disabled:cursor-not-allowed"
                               style={isCurrent
                                 ? { backgroundColor: stage.color, borderColor: stage.color, color: '#fff' }
                                 : isDone
-                                  ? { backgroundColor: stage.color + '33', borderColor: stage.color, color: stage.color }
-                                  : { backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#6b7280' }
+                                  ? { backgroundColor: stage.color + '33', borderColor: stage.color, color: stage.color, opacity: canMove ? 1 : 0.7 }
+                                  : { backgroundColor: '#f9fafb', borderColor: canMove ? '#9ca3af' : '#d1d5db', color: '#6b7280' }
                               }>
                               {isDone && !isCurrent ? '✓ ' : ''}{stage.name}
                             </button>
@@ -886,8 +931,8 @@ export default function MyVisits() {
                         );
                       })}
                     </div>
-                    {/* Waiting toggle */}
-                    {detail.current_stage_id && (
+                    {/* Waiting toggle — only shown when admin has enabled the feature */}
+                    {detail.current_stage_id && user?.company_waiting_status_enabled && (
                       <div className="flex items-center gap-3 my-2 p-2.5 rounded-xl bg-gray-50 border border-gray-200">
                         {detail.stage_status === 'waiting' ? (
                           <>
@@ -902,8 +947,9 @@ export default function MyVisits() {
                             )}
                             <button
                               onClick={() => handleStageWaiting(detail.id, 'in_progress')}
-                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-semibold">
-                              Call In ▶
+                              disabled={waitingLoading}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-semibold disabled:opacity-50">
+                              {waitingLoading ? '…' : 'Call In ▶'}
                             </button>
                           </>
                         ) : (
@@ -913,8 +959,9 @@ export default function MyVisits() {
                             </span>
                             <button
                               onClick={() => handleStageWaiting(detail.id, 'waiting')}
-                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold">
-                              Mark Waiting
+                              disabled={waitingLoading}
+                              className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold disabled:opacity-50">
+                              {waitingLoading ? '…' : 'Mark Waiting'}
                             </button>
                           </>
                         )}
@@ -936,14 +983,66 @@ export default function MyVisits() {
                   </div>
                 )}
 
+                {/* Next Visit */}
+                <div className="border-t pt-4">
+                  <p className="font-semibold text-gray-700 mb-2">📅 Next Visit</p>
+                  {detail.next_visit_date && nextVisitPreset === null && (
+                    <p className="text-sm text-indigo-700 font-medium mb-2">
+                      Scheduled: {new Date(String(detail.next_visit_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[{ label: '1 Week', days: 7 }, { label: '2 Weeks', days: 14 }, { label: '3 Weeks', days: 21 },
+                      { label: '1 Month', days: 30 }, { label: '3 Months', days: 90 }].map(({ label, days }) => {
+                      const d = new Date(); d.setDate(d.getDate() + days);
+                      const iso = d.toISOString().slice(0, 10);
+                      return (
+                        <button key={days}
+                          onClick={() => { setNextVisitPreset(days); saveNextVisit(iso); }}
+                          disabled={savingNextVisit}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors ${
+                            nextVisitPreset === days
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-indigo-400 hover:text-indigo-600'
+                          }`}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setNextVisitPreset('custom')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors ${
+                        nextVisitPreset === 'custom'
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-indigo-400 hover:text-indigo-600'
+                      }`}>
+                      Custom
+                    </button>
+                  </div>
+                  {nextVisitPreset === 'custom' && (
+                    <div className="flex gap-2 mt-1">
+                      <input type="date" className="input text-sm flex-1"
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={nextVisitCustom}
+                        onChange={e => setNextVisitCustom(e.target.value)} />
+                      <button
+                        onClick={() => nextVisitCustom && saveNextVisit(nextVisitCustom)}
+                        disabled={!nextVisitCustom || savingNextVisit}
+                        className="btn-primary text-sm px-4">
+                        {savingNextVisit ? '…' : 'Save'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {(detail.status === 'pending' || detail.status === 'approved') && (
                   <div className="flex gap-2 border-t pt-4">
                     {detail.status === 'pending' && (
                       <>
                         <button onClick={e => updateStatus(detail.id, 'approved', e)}
-                          className="btn-primary flex-1 text-sm">Approve</button>
+                          className="btn-primary flex-1 text-sm">Call / Start</button>
                         <button onClick={e => updateStatus(detail.id, 'rejected', e)}
-                          className="flex-1 text-sm px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium transition-colors">Reject</button>
+                          className="flex-1 text-sm px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium transition-colors">No Show</button>
                       </>
                     )}
                     {detail.status === 'approved' && (

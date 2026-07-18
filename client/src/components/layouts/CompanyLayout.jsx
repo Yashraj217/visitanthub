@@ -10,8 +10,10 @@ const navItems = [
   { to: '/dashboard/visitors',       label: 'Visitors',    icon: '👥' },
   { to: '/dashboard/employees',      label: 'Associates',  icon: '👤' },
   { to: '/dashboard/services',       label: 'Services',    icon: '🎯' },
+  { to: '/dashboard/revisits',        label: 'Revisits',    icon: '🔁' },
   { to: '/dashboard/scheduling',     label: 'Scheduling',  icon: '📅' },
   { to: '/dashboard/settings',       label: 'Settings',    icon: '⚙️' },
+  { to: '/dashboard/billing',        label: 'Billing',     icon: '💳' },
   { to: '/dashboard/help',           label: 'Help',        icon: '❓' },
 ];
 

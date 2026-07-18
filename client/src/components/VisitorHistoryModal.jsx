@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 const STATUS_COLORS = {
   pending:   'bg-yellow-100 text-yellow-700',
@@ -27,12 +28,15 @@ function DL({ label, value }) {
   );
 }
 
-function VisitDetailPanel({ visitId, onBack }) {
+function VisitDetailPanel({ visitId, onBack, onRevisitSet }) {
   const [detail, setDetail]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [photos, setPhotos]   = useState([]);
   const [lightbox, setLightbox] = useState(null);
+  const [showRevisit, setShowRevisit] = useState(false);
+  const [savingRevisit, setSavingRevisit] = useState(false);
+  const [customDate, setCustomDate] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -45,12 +49,64 @@ function VisitDetailPanel({ visitId, onBack }) {
       .finally(() => setLoading(false));
   }, [visitId]);
 
+  async function saveRevisitDate(dateStr) {
+    setSavingRevisit(true);
+    try {
+      await api.put(`/visits/${visitId}/next-visit`, { next_visit_date: dateStr });
+      setDetail(d => ({ ...d, next_visit_date: dateStr }));
+      setShowRevisit(false);
+      setCustomDate('');
+      toast.success('Next visit date saved');
+      if (onRevisitSet) onRevisitSet(dateStr);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save date');
+    } finally { setSavingRevisit(false); }
+  }
+
   return (
     <div>
-      <button onClick={onBack}
-        className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-4">
-        ← Back to History
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onBack}
+          className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+          ← Back to History
+        </button>
+        <button
+          onClick={() => { setShowRevisit(v => !v); setCustomDate(''); }}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-colors">
+          📅 {showRevisit ? 'Cancel' : 'Set Revisit'}
+        </button>
+      </div>
+
+      {showRevisit && (
+        <div className="mb-4 p-3 rounded-xl border border-indigo-200 bg-indigo-50/60 flex flex-col gap-2">
+          <p className="text-xs font-semibold text-indigo-700">Schedule next revisit for this visit</p>
+          <div className="flex flex-wrap gap-1">
+            {PRESETS.map(p => (
+              <button key={p.days}
+                onClick={() => !savingRevisit && saveRevisitDate(addDays(p.days))}
+                disabled={savingRevisit}
+                className="text-xs px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-700 font-semibold hover:bg-indigo-100 disabled:opacity-50 transition-colors">
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+            <button onClick={() => !savingRevisit && customDate && saveRevisitDate(customDate)}
+              disabled={savingRevisit || !customDate}
+              className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-40">
+              {savingRevisit ? '…' : 'Set'}
+            </button>
+          </div>
+          {detail?.next_visit_date && (
+            <p className="text-xs text-green-700 font-medium">
+              ✓ Currently set: {fmtDate(detail.next_visit_date)}
+            </p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-10 text-center text-gray-400">Loading…</div>
@@ -151,11 +207,55 @@ function VisitDetailPanel({ visitId, onBack }) {
   );
 }
 
-export default function VisitorHistoryModal({ visitorId, onClose }) {
+const PRESETS = [
+  { label: '1 Wk',  days: 7 },
+  { label: '2 Wks', days: 14 },
+  { label: '3 Wks', days: 21 },
+  { label: '1 Mo',  days: 30 },
+  { label: '3 Mo',  days: 90 },
+];
+function addDays(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export default function VisitorHistoryModal({ visitorId, onClose, onRevisitUpdated }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [detailVisitId, setDetailVisitId] = useState(null);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [settingDate, setSettingDate] = useState(false);
+  const [savingDate,  setSavingDate]  = useState(false);
+  const [customDate,  setCustomDate]  = useState('');
+
+  async function sendReminder() {
+    setSendingReminder(true);
+    try {
+      await api.post(`/visitors/${visitorId}/revisit-reminder`);
+      toast.success('Revisit reminder sent via WhatsApp');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send reminder');
+    } finally { setSendingReminder(false); }
+  }
+
+  async function saveRevisitDate(dateStr) {
+    setSavingDate(true);
+    try {
+      await api.put(`/visitors/${visitorId}/next-visit`, { next_visit_date: dateStr });
+      // Update local data so banner reflects new date immediately
+      setData(d => ({
+        ...d,
+        visits: d.visits.map((v, i) => i === 0 ? { ...v, next_visit_date: dateStr } : v),
+      }));
+      setSettingDate(false);
+      setCustomDate('');
+      toast.success('Next visit date saved');
+      if (onRevisitUpdated) onRevisitUpdated(visitorId, dateStr);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save date');
+    } finally { setSavingDate(false); }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -184,6 +284,13 @@ export default function VisitorHistoryModal({ visitorId, onClose }) {
             <VisitDetailPanel
               visitId={detailVisitId}
               onBack={() => setDetailVisitId(null)}
+              onRevisitSet={dateStr => {
+                setData(d => ({
+                  ...d,
+                  visits: d.visits.map(v => v.id === detailVisitId ? { ...v, next_visit_date: dateStr } : v),
+                }));
+                if (onRevisitUpdated) onRevisitUpdated(visitorId, dateStr);
+              }}
             />
           ) : loading ? (
             <div className="py-12 text-center text-gray-400">Loading…</div>
@@ -210,6 +317,110 @@ export default function VisitorHistoryModal({ visitorId, onClose }) {
                   <p className="text-xs text-gray-400">total visits</p>
                 </div>
               </div>
+
+              {/* Next visit section — set or change date + send reminder */}
+              {(() => {
+                const nv = data.visits.filter(v => v.next_visit_date).map(v => v.next_visit_date).sort().reverse()[0];
+                if (nv) {
+                  const diff = Math.round((new Date(String(nv).slice(0, 10) + 'T12:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+                  const overdue = diff < 0;
+                  return (
+                    <div className={`mb-4 px-3 py-2.5 rounded-xl border ${overdue ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className={`text-xs font-semibold ${overdue ? 'text-red-700' : 'text-green-700'}`}>
+                            {overdue ? '⚠️ Overdue revisit' : '📅 Next visit scheduled'}
+                          </p>
+                          <p className={`text-sm font-bold mt-0.5 ${overdue ? 'text-red-900' : 'text-green-900'}`}>{fmtDate(nv)}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => { setSettingDate(true); setCustomDate(''); }}
+                            className="text-xs px-2.5 py-1.5 rounded-lg font-semibold bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors">
+                            ✏️ Change
+                          </button>
+                          <button
+                            onClick={sendReminder}
+                            disabled={sendingReminder}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-green-300 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors shadow-sm">
+                            {sendingReminder ? '…' : (
+                              <>
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                                </svg>
+                                Send Reminder
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      {settingDate && (
+                        <div className="mt-3 pt-3 border-t border-current/10 flex flex-col gap-2">
+                          <div className="flex flex-wrap gap-1">
+                            {PRESETS.map(p => (
+                              <button key={p.days}
+                                onClick={() => !savingDate && saveRevisitDate(addDays(p.days))}
+                                disabled={savingDate}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-700 font-semibold hover:bg-indigo-50 disabled:opacity-50 transition-colors">
+                                {p.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+                              min={new Date().toISOString().slice(0, 10)}
+                              className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                            <button onClick={() => !savingDate && customDate && saveRevisitDate(customDate)}
+                              disabled={savingDate || !customDate}
+                              className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-40">
+                              {savingDate ? '…' : 'Set'}
+                            </button>
+                            <button onClick={() => setSettingDate(false)}
+                              className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500 font-semibold hover:bg-gray-200">✕</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                // No date set — show a "Schedule Revisit" panel
+                return (
+                  <div className="mb-4 px-3 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50">
+                    {settingDate ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs font-semibold text-indigo-700">📅 Schedule next revisit</p>
+                        <div className="flex flex-wrap gap-1">
+                          {PRESETS.map(p => (
+                            <button key={p.days}
+                              onClick={() => !savingDate && saveRevisitDate(addDays(p.days))}
+                              disabled={savingDate}
+                              className="text-xs px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-700 font-semibold hover:bg-indigo-100 disabled:opacity-50 transition-colors">
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+                            min={new Date().toISOString().slice(0, 10)}
+                            className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <button onClick={() => !savingDate && customDate && saveRevisitDate(customDate)}
+                            disabled={savingDate || !customDate}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-40">
+                            {savingDate ? '…' : 'Set Date'}
+                          </button>
+                          <button onClick={() => setSettingDate(false)}
+                            className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500 font-semibold hover:bg-gray-200">✕</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setSettingDate(true); setCustomDate(''); }}
+                        className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors py-1">
+                        <span>📅</span> Schedule Next Revisit
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-6 text-xs text-gray-500 mb-6 border-t border-b py-3">
                 <div>
@@ -258,6 +469,11 @@ export default function VisitorHistoryModal({ visitorId, onClose }) {
                           {v.service_name && <span>📋 {v.service_name}</span>}
                           {v.employee_name && <span>👤 {v.employee_name}{v.designation ? ` — ${v.designation}` : ''}</span>}
                           {v.photo_count > 0 && <span className="text-indigo-500 font-medium">📷 {v.photo_count}</span>}
+                          {v.next_visit_date && (
+                            <span className="text-green-600 font-medium">
+                              🔁 Next: {fmtDate(v.next_visit_date)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <span className="text-gray-300 group-hover:text-indigo-400 text-lg self-center shrink-0">›</span>

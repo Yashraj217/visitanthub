@@ -54,14 +54,14 @@ export default function Services() {
 
   // ── Service CRUD ───────────────────────────────────────────────────────
   function openAdd()  { setSvcForm({ name:'', description:'', color:'#6366f1', icon:'🏢' }); setSvcModal('add'); }
-  function openEdit(s) { setSvcForm({ name:s.name, description:s.description||'', color:s.color||'#6366f1', icon:s.icon||'🏢' }); setSvcModal(s.id); }
+  function openEdit(s) { setSvcForm({ name:s.name, description:s.description||'', color:s.color||'#6366f1', icon:s.icon||'🏢', is_active: s.is_active ?? 1, sort_order: s.sort_order ?? 0 }); setSvcModal(s.id); }
 
   async function saveSvc() {
     if (!svcForm.name.trim()) return toast.error('Service name is required');
     setSaving(true);
     try {
       if (svcModal === 'add') {
-        const { data } = await api.post('/services', svcForm);
+        await api.post('/services', svcForm);
         toast.success('Service created');
       } else {
         await api.put(`/services/${svcModal}`, svcForm);

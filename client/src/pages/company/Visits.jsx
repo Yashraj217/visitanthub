@@ -53,7 +53,7 @@ export default function Visits() {
   const [hiddenFields, setHiddenFields] = useState([]);
 
   // Stage tracking
-  const [stages,       setStages]       = useState([]);
+  const [stages,         setStages]         = useState([]);
   const [advancingStage, setAdvancingStage] = useState(false);
 
   // Queue-jump confirmation
@@ -67,6 +67,15 @@ export default function Visits() {
   const [photosLoading, setPhotosLoading] = useState(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [lightbox, setLightbox]       = useState(null); // url string
+
+  // Notes
+  const [notes, setNotes]             = useState([]);
+  const [noteText, setNoteText]       = useState('');
+  const [addingNote, setAddingNote]   = useState(false);
+
+  const [nextVisitPreset,   setNextVisitPreset]   = useState(null);
+  const [nextVisitCustom,   setNextVisitCustom]   = useState('');
+  const [savingNextVisit,   setSavingNextVisit]   = useState(false);
 
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const [visibleCols, setVisibleCols]           = useState(loadCols);
@@ -147,6 +156,10 @@ export default function Visits() {
     setEmpList([]);
     setNewEmpId('');
     setPhotos([]);
+    setNotes([]);
+    setNoteText('');
+    setNextVisitPreset(null);
+    setNextVisitCustom('');
   }
 
   async function openDetail(v) {
@@ -159,11 +172,15 @@ export default function Visits() {
       setSelected(data);
     } catch { /* use row data */ }
     finally { setDetailLoading(false); }
-    // Load photos
+    // Load photos + notes in parallel
     setPhotosLoading(true);
     try {
-      const { data } = await api.get(`/visits/${v.id}/photos`);
-      setPhotos(data);
+      const [photosRes, notesRes] = await Promise.all([
+        api.get(`/visits/${v.id}/photos`),
+        api.get(`/visits/${v.id}/notes`),
+      ]);
+      setPhotos(photosRes.data);
+      setNotes(notesRes.data);
     } catch { /* ignore */ }
     finally { setPhotosLoading(false); }
   }
@@ -191,30 +208,36 @@ export default function Visits() {
     } catch { toast.error('Delete failed'); }
   }
 
+  function confirmAndMove(stage) {
+    if (!selected) return;
+    const empChange = stage.employee_id && stage.employee_id !== selected.employee_id;
+    const msg = empChange
+      ? `Move to "${stage.name}"?\nVisitor will be transferred to ${stage.employee_name}.`
+      : `Move to "${stage.name}"?`;
+    if (!window.confirm(msg)) return;
+    handleAdvanceStage(stage.id);
+  }
+
   async function handleAdvanceStage(stageId) {
     if (!selected) return;
     setAdvancingStage(true);
     try {
       const { data } = await api.put(`/visits/${selected.id}/stage`, { stageId });
-      setSelected(prev => ({
-        ...prev,
+      const patch = {
         current_stage_id:    data.current_stage_id,
         current_stage_name:  data.current_stage_name,
         current_stage_color: data.current_stage_color,
         stage_logs:          data.logs,
-        ...(data.is_final ? { status: 'completed' } : {}),
         ...(data.status_reset ? { status: data.status_reset } : {}),
-      }));
-      // Reflect status in list
-      setVisits(prev => prev.map(v => v.id === selected.id ? {
-        ...v,
-        current_stage_id:    data.current_stage_id,
-        current_stage_name:  data.current_stage_name,
-        current_stage_color: data.current_stage_color,
-        ...(data.is_final ? { status: 'completed' } : {}),
-        ...(data.status_reset ? { status: data.status_reset } : {}),
-      } : v));
-      toast.success(`Stage: ${data.current_stage_name}`);
+      };
+      setSelected(prev => ({ ...prev, ...patch }));
+      setVisits(prev => prev.map(v => v.id === selected.id ? { ...v, ...patch } : v));
+      if (data.is_final) {
+        toast.success('Visit completed');
+        closeDetail();
+      } else {
+        toast.success(`Moved to: ${data.current_stage_name}`);
+      }
     } catch { toast.error('Failed to update stage'); }
     finally { setAdvancingStage(false); }
   }
@@ -256,6 +279,17 @@ export default function Visits() {
     }
   }
 
+  async function submitNote() {
+    if (!noteText.trim() || addingNote) return;
+    setAddingNote(true);
+    try {
+      const { data } = await api.post(`/visits/${selected.id}/notes`, { note: noteText.trim() });
+      setNotes(prev => [...prev, data]);
+      setNoteText('');
+    } catch { toast.error('Failed to add note'); }
+    finally { setAddingNote(false); }
+  }
+
   async function load(order) {
     setLoading(true);
     const params = new URLSearchParams();
@@ -287,6 +321,31 @@ export default function Visits() {
     const t = setInterval(() => load(sortOrder), 2 * 60 * 1000);
     return () => clearInterval(t);
   }, [filters, sortOrder]);
+
+  // Real-time refresh via SSE — updates list instantly when visits change (transfer, status, check-in)
+  useEffect(() => {
+    const token = sessionStorage.getItem('token');
+    if (!token) return;
+    let src;
+    let retryTimer;
+    let active = true;
+
+    function connect() {
+      src = new EventSource(`/api/visits/events?token=${encodeURIComponent(token)}`);
+      src.onmessage = () => load(sortOrder);
+      src.onerror = () => {
+        src.close();
+        if (active) retryTimer = setTimeout(connect, 5000);
+      };
+    }
+    connect();
+
+    return () => {
+      active = false;
+      clearTimeout(retryTimer);
+      src?.close();
+    };
+  }, [sortOrder]);
 
   async function updateStatus(id, status, force = false) {
     if (status === 'completed' && !window.confirm('Mark this visit as completed?')) return;
@@ -414,6 +473,10 @@ export default function Visits() {
           onChange={e => setFilters(f => ({ ...f, date: e.target.value }))}
         />
 
+        <button onClick={() => load(sortOrder)} className="btn-secondary flex items-center gap-2" title="Refresh">
+          ↻ Refresh
+        </button>
+
         <button onClick={exportGrid} className="btn-secondary flex items-center gap-2">
           ⬇ Export
         </button>
@@ -486,8 +549,8 @@ export default function Visits() {
           )}
         </div>
 
-        {(filters.status || filters.date) && (
-          <button onClick={() => setFilters({ status:'', date:'' })} className="btn-secondary ml-auto">Clear</button>
+        {filters.date && (
+          <button onClick={() => setFilters(f => ({ ...f, date: '' }))} className="btn-secondary ml-auto">Clear</button>
         )}
       </div>
 
@@ -614,7 +677,7 @@ export default function Visits() {
                             {v.current_stage_name}
                           </span>
                         )}
-                        {v.stage_status === 'waiting' && (
+                        {v.stage_status === 'waiting' && user?.company_waiting_status_enabled && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full w-fit animate-pulse">
                             ⏱ Waiting{v.stage_waiting_since ? ` · ${fmtElapsed(now - new Date(v.stage_waiting_since))}` : ''}
                           </span>
@@ -706,7 +769,7 @@ export default function Visits() {
       {selected && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
           onClick={closeDetail}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[56%] p-6 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Visit Details</h2>
@@ -716,10 +779,11 @@ export default function Visits() {
               <div className="py-8 text-center text-gray-400">Loading…</div>
             ) : (
               <>
-                <dl className="space-y-3 text-sm">
-                  {/* Visitor row with history link */}
+                {/* Two-column grid for core fields */}
+                <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                  {/* Visitor — spans both columns when history link is present */}
                   <div className="flex gap-2 items-start">
-                    <dt className="w-28 font-medium text-gray-500 shrink-0 pt-0.5">Visitor</dt>
+                    <dt className="w-24 font-medium text-gray-500 shrink-0 pt-0.5">Visitor</dt>
                     <dd className="flex-1 flex items-center gap-2 flex-wrap">
                       <span className="text-gray-900">{selected.visitor_name}</span>
                       {selected.visitor_id && (
@@ -743,14 +807,14 @@ export default function Visits() {
                     ['WhatsApp',   selected.whatsapp_sent ? '✓ Sent' : '✗ Not sent'],
                   ].map(([k, v]) => (
                     <div key={k} className="flex gap-2">
-                      <dt className="w-28 font-medium text-gray-500 shrink-0">{k}</dt>
-                      <dd className="text-gray-900">{v}</dd>
+                      <dt className="w-24 font-medium text-gray-500 shrink-0">{k}</dt>
+                      <dd className="text-gray-900 break-words min-w-0">{v}</dd>
                     </div>
                   ))}
 
-                  {/* Associate row — inline editable */}
-                  <div className="flex gap-2 items-start">
-                    <dt className="w-28 font-medium text-gray-500 shrink-0 pt-0.5">Associate</dt>
+                  {/* Associate row — spans both columns (has inline editor) */}
+                  <div className="col-span-2 flex gap-2 items-start">
+                    <dt className="w-24 font-medium text-gray-500 shrink-0 pt-0.5">Associate</dt>
                     <dd className="flex-1">
                       {editEmp ? (
                         <div className="flex gap-2 items-center">
@@ -792,11 +856,11 @@ export default function Visits() {
                 {selected.custom_fields?.filter(f => !f.is_hidden).length > 0 && (
                   <div className="mt-4 pt-4 border-t">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Additional Info</p>
-                    <dl className="space-y-2 text-sm">
+                    <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                       {selected.custom_fields.filter(f => !f.is_hidden).map((f, i) => (
                         <div key={i} className="flex gap-2">
-                          <dt className="w-28 font-medium text-gray-500 shrink-0">{f.field_label}</dt>
-                          <dd className="text-gray-900">{f.value || '—'}</dd>
+                          <dt className="w-24 font-medium text-gray-500 shrink-0">{f.field_label}</dt>
+                          <dd className="text-gray-900 break-words min-w-0">{f.value || '—'}</dd>
                         </div>
                       ))}
                     </dl>
@@ -808,44 +872,45 @@ export default function Visits() {
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-3">
                       🔒 Internal Fields
                     </p>
-                    <dl className="space-y-2 text-sm">
+                    <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                       {selected.custom_fields.filter(f => f.is_hidden).map((f, i) => (
                         <div key={i} className="flex gap-2">
-                          <dt className="w-28 font-medium text-gray-500 shrink-0">{f.field_label}</dt>
-                          <dd className={f.value ? 'text-gray-900' : 'text-gray-300 italic'}>{f.value || 'Not filled yet'}</dd>
+                          <dt className="w-24 font-medium text-gray-500 shrink-0">{f.field_label}</dt>
+                          <dd className={`break-words min-w-0 ${f.value ? 'text-gray-900' : 'text-gray-300 italic'}`}>{f.value || 'Not filled yet'}</dd>
                         </div>
                       ))}
                     </dl>
                   </div>
                 )}
 
-                {/* Stage tracker */}
-                {stages.length > 0 && (
+                {/* Stage tracker — only for active visits */}
+                {stages.length > 0 && (selected.status === 'pending' || selected.status === 'approved') && (
                   <div className="mt-4 pt-4 border-t">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stage Progress</p>
 
-                    {/* Stepper */}
+                    {/* Stepper — click any non-current pill to move there */}
                     <div className="flex items-center gap-1 flex-wrap mb-3">
                       {stages.map((st, i) => {
                         const isCurrent = selected.current_stage_id === st.id;
                         const logs = selected.stage_logs || [];
                         const isDone = logs.some(l => l.stage_name === st.name);
+                        const canMove = !isCurrent;
                         return (
                           <span key={st.id} className="flex items-center gap-1">
                             <button
-                              disabled={advancingStage}
-                              onClick={() => handleAdvanceStage(isCurrent ? null : st.id)}
-                              title={isCurrent ? 'Click to clear' : `Move to "${st.name}"`}
+                              disabled={advancingStage || !canMove}
+                              onClick={() => confirmAndMove(st)}
+                              title={canMove ? `Move to "${st.name}"` : st.name}
                               className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
                                 isCurrent
                                   ? 'text-white shadow-md scale-105'
                                   : isDone
-                                  ? 'opacity-60 text-white'
-                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                                  ? 'opacity-60 text-white hover:opacity-80'
+                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:bg-gray-50'
                               } disabled:cursor-not-allowed`}
                               style={isCurrent || isDone ? { backgroundColor: st.color, borderColor: st.color } : {}}>
                               {isDone && !isCurrent ? '✓ ' : ''}{st.name}
-                              {st.is_final && ' 🏁'}
+                              {!!st.is_final && ' 🏁'}
                             </button>
                             {i < stages.length - 1 && <span className="text-gray-300 text-xs">→</span>}
                           </span>
@@ -853,8 +918,8 @@ export default function Visits() {
                       })}
                     </div>
 
-                    {/* Waiting toggle — only shown when a stage is active */}
-                    {selected.current_stage_id && (
+                    {/* Waiting toggle — only shown when a stage is active and feature enabled */}
+                    {selected.current_stage_id && user?.company_waiting_status_enabled && (
                       <div className="flex items-center gap-3 mb-3 p-2.5 rounded-xl bg-gray-50 border border-gray-200">
                         {selected.stage_status === 'waiting' ? (
                           <>
@@ -905,6 +970,47 @@ export default function Visits() {
                   </div>
                 )}
 
+                {/* Notes section */}
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    📝 Notes {notes.length > 0 && <span className="text-gray-500 normal-case font-normal">({notes.length})</span>}
+                  </p>
+                  {notes.length === 0 && (
+                    <p className="text-xs text-gray-300 italic py-1 mb-2">No notes yet.</p>
+                  )}
+                  <div className="space-y-2 mb-3">
+                    {notes.map(n => (
+                      <div key={n.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-indigo-600">{n.author_name}</span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{n.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-end">
+                    <textarea
+                      className="input flex-1 text-sm resize-none"
+                      rows={2}
+                      placeholder="Add a note…"
+                      value={noteText}
+                      onChange={e => setNoteText(e.target.value)}
+                      maxLength={500}
+                      onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitNote(); }}
+                    />
+                    <button
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${!noteText.trim() || addingNote ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                      onClick={submitNote}
+                      disabled={!noteText.trim() || addingNote}
+                    >
+                      {addingNote ? '…' : 'Add'}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Photos section */}
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex items-center justify-between mb-2">
@@ -938,6 +1044,73 @@ export default function Visits() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+
+                {/* ── Next Visit ── */}
+                <div className="mt-5 pt-4 border-t">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    Next Visit
+                  </p>
+                  {selected.next_visit_date && nextVisitPreset === null && (
+                    <p className="text-sm text-indigo-700 font-medium mb-2">
+                      Scheduled: {new Date(String(selected.next_visit_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {[
+                      { label: '1 Week',   days: 7   },
+                      { label: '2 Weeks',  days: 14  },
+                      { label: '3 Weeks',  days: 21  },
+                      { label: '1 Month',  days: 30  },
+                      { label: '3 Months', days: 90  },
+                      { label: 'Custom',   days: null },
+                    ].map(opt => (
+                      <button key={opt.label}
+                        onClick={() => {
+                          setNextVisitPreset(opt.label);
+                          if (opt.days !== null) setNextVisitCustom('');
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                          nextVisitPreset === opt.label
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                        }`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {nextVisitPreset === 'Custom' && (
+                    <input type="date" className="input text-sm mt-1 mb-2 w-full max-w-xs"
+                      value={nextVisitCustom}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={e => setNextVisitCustom(e.target.value)} />
+                  )}
+                  {nextVisitPreset && (
+                    <button
+                      disabled={savingNextVisit || (nextVisitPreset === 'Custom' && !nextVisitCustom)}
+                      onClick={async () => {
+                        const presets = { '1 Week': 7, '2 Weeks': 14, '3 Weeks': 21, '1 Month': 30, '3 Months': 90 };
+                        let date;
+                        if (nextVisitPreset === 'Custom') {
+                          date = nextVisitCustom;
+                        } else {
+                          const d = new Date();
+                          d.setDate(d.getDate() + presets[nextVisitPreset]);
+                          date = d.toISOString().slice(0, 10);
+                        }
+                        setSavingNextVisit(true);
+                        try {
+                          await api.put(`/visits/${selected.id}/next-visit`, { next_visit_date: date });
+                          setSelected(s => ({ ...s, next_visit_date: date }));
+                          setNextVisitPreset(null);
+                          toast.success('Next visit scheduled');
+                        } catch { toast.error('Failed to save'); }
+                        finally { setSavingNextVisit(false); }
+                      }}
+                      className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                      {savingNextVisit ? 'Saving…' : 'Save'}
+                    </button>
                   )}
                 </div>
 

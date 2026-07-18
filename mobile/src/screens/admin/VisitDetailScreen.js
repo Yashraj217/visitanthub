@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, Modal, FlatList,
+  Alert, ActivityIndicator, Modal, FlatList, TextInput, Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth }  from '../../context/AuthContext';
 import { COLORS }   from '../../constants/colors';
@@ -37,10 +38,21 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
   const [loadingEmps,   setLoadingEmps]   = useState(false);
 
   // Stage tracking
-  const [stages,          setStages]          = useState([]);
-  const [advancingStage,  setAdvancingStage]  = useState(false);
-  const [waitingLoading,  setWaitingLoading]  = useState(false);
-  const [nowMs,           setNowMs]           = useState(() => Date.now());
+  const [stages,         setStages]         = useState([]);
+  const [advancingStage, setAdvancingStage] = useState(false);
+  const [waitingLoading, setWaitingLoading] = useState(false);
+  const [nowMs,          setNowMs]          = useState(() => Date.now());
+
+  // Notes
+  const [notes,        setNotes]        = useState([]);
+  const [noteText,     setNoteText]     = useState('');
+  const [addingNote,   setAddingNote]   = useState(false);
+  const noteInputRef   = useRef(null);
+
+  // Next visit
+  const [nextVisitSaving,  setNextVisitSaving]  = useState(false);
+  const [showDatePicker,   setShowDatePicker]   = useState(false);
+  const [pickerDate,       setPickerDate]       = useState(new Date());
 
   // Fetch full visit detail + stages
   useEffect(() => {
@@ -54,7 +66,23 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
       .catch(() => {})
       .finally(() => setFetching(false));
     api.get('/stages').then(({ data }) => setStages(data)).catch(() => {});
+    api.get(`/visits/${visit.id}/notes`).then(({ data }) => setNotes(data)).catch(() => {});
   }, []);
+
+  function confirmStageMove(stage, isBackward) {
+    const transfersTo = stage.employee_id && stage.employee_id !== visit.employee_id
+      ? ` Visitor will be transferred to ${stage.employee_name}.`
+      : '';
+    const warning = isBackward ? ' This moves the visitor backward.' : '';
+    Alert.alert(
+      'Move to Stage',
+      `Move visitor to "${stage.name}"?${transfersTo}${warning}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move', onPress: () => handleAdvanceStage(stage.id) },
+      ]
+    );
+  }
 
   async function handleAdvanceStage(stageId) {
     setAdvancingStage(true);
@@ -68,6 +96,11 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
         stage_logs:          data.logs,
         ...(data.status_reset ? { status: data.status_reset } : {}),
       }));
+      if (data.is_final) {
+        Alert.alert('Visit Completed', `Visitor has completed all stages.`, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      }
     } catch { Alert.alert('Error', 'Failed to update stage.'); }
     finally { setAdvancingStage(false); }
   }
@@ -133,6 +166,17 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
     ]);
   }
 
+  async function submitNote() {
+    if (!noteText.trim()) return;
+    setAddingNote(true);
+    try {
+      const { data } = await api.post(`/visits/${visit.id}/notes`, { note: noteText.trim() });
+      setNotes(prev => [...prev, data]);
+      setNoteText('');
+    } catch { Alert.alert('Error', 'Failed to add note.'); }
+    finally { setAddingNote(false); }
+  }
+
   async function reassign(employee) {
     setReassigning(false);
     setLoading(true);
@@ -142,6 +186,23 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
     } catch (err) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to reassign.');
     } finally { setLoading(false); }
+  }
+
+  async function saveNextVisit(date) {
+    setNextVisitSaving(true);
+    try {
+      const dateStr = date.toISOString().slice(0, 10);
+      await api.put(`/visits/${visit.id}/next-visit`, { next_visit_date: dateStr });
+      setVisit(v => ({ ...v, next_visit_date: dateStr }));
+    } catch {
+      Alert.alert('Error', 'Failed to save next visit date.');
+    } finally { setNextVisitSaving(false); }
+  }
+
+  function applyPreset(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    saveNextVisit(d);
   }
 
   const tz = user?.company_timezone || 'Asia/Kolkata';
@@ -227,15 +288,64 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Waiting status — only visible when admin has enabled the feature */}
+        {(visit.status === 'pending' || visit.status === 'approved') && user?.company_waiting_status_enabled && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Waiting Status</Text>
+            <View style={st.waitingRow}>
+              {visit.stage_status === 'waiting' ? (
+                <>
+                  <View style={st.waitingBadge}>
+                    <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
+                  </View>
+                  {visit.stage_waiting_since && (
+                    <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
+                  )}
+                  <TouchableOpacity
+                    style={[st.waitingBtn, st.callInBtn]}
+                    onPress={() => handleStageWaiting('in_progress')}
+                    disabled={waitingLoading}>
+                    <Text style={st.waitingBtnText}>
+                      {waitingLoading ? '…' : 'Call In ▶'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={st.waitingHint}>
+                    {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[st.waitingBtn, st.markWaitingBtn]}
+                    onPress={() => handleStageWaiting('waiting')}
+                    disabled={waitingLoading}>
+                    <Text style={[st.waitingBtnText, { color: '#92400e' }]}>
+                      {waitingLoading ? '…' : 'Mark Waiting'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Stage tracker */}
         {stages.length > 0 && (
           <View style={s.card}>
             <Text style={s.sectionTitle}>Stage Progress</Text>
+
+            {/* Stage pills — tap any non-current pill to move there */}
+            {(visit.status === 'pending' || visit.status === 'approved') && (
+              <Text style={st.stageHint}>Tap any stage to move visitor</Text>
+            )}
             <View style={st.stageRow}>
               {stages.map((stage, i) => {
-                const isCurrent = visit.current_stage_id === stage.id;
-                const logs      = visit.stage_logs || [];
-                const isDone    = logs.some(l => l.stage_name === stage.name);
+                const isCurrent  = visit.current_stage_id === stage.id;
+                const logs       = visit.stage_logs || [];
+                const isDone     = logs.some(l => l.stage_name === stage.name);
+                const curIdx     = stages.findIndex(sg => sg.id === visit.current_stage_id);
+                const isBackward = !isCurrent && curIdx !== -1 && i < curIdx;
+                const canMove    = (visit.status === 'pending' || visit.status === 'approved') && !isCurrent;
                 return (
                   <View key={stage.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
@@ -244,11 +354,13 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
                         isCurrent && { backgroundColor: stage.color, borderColor: stage.color },
                         isDone && !isCurrent && { backgroundColor: stage.color + 'aa', borderColor: stage.color },
                         !isCurrent && !isDone && st.stageBtnInactive,
+                        canMove && !isDone && { borderColor: stage.color, backgroundColor: stage.color + '22' },
                       ]}
-                      disabled={advancingStage}
-                      onPress={() => handleAdvanceStage(isCurrent ? null : stage.id)}
+                      disabled={!canMove || advancingStage}
+                      onPress={() => confirmStageMove(stage, isBackward)}
                       activeOpacity={0.75}>
-                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' }]}>
+                      <Text style={[st.stageBtnText, (isCurrent || isDone) && { color: '#fff' },
+                        canMove && !isDone && { color: stage.color }]}>
                         {isDone && !isCurrent ? '✓ ' : ''}{stage.name}{stage.is_final ? ' 🏁' : ''}
                       </Text>
                     </TouchableOpacity>
@@ -257,40 +369,6 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
                 );
               })}
             </View>
-
-            {/* Waiting toggle */}
-            {visit.current_stage_id && (
-              <View style={st.waitingRow}>
-                {visit.stage_status === 'waiting' ? (
-                  <>
-                    <View style={st.waitingBadge}>
-                      <Text style={st.waitingBadgeText}>⏱ Waiting</Text>
-                    </View>
-                    {visit.stage_waiting_since && (
-                      <Text style={st.waitingTimer}>{fmtElapsedMs(visit.stage_waiting_since)}</Text>
-                    )}
-                    <TouchableOpacity
-                      style={[st.waitingBtn, st.callInBtn]}
-                      onPress={() => handleStageWaiting('in_progress')}
-                      disabled={waitingLoading}>
-                      <Text style={st.waitingBtnText}>Call In ▶</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={st.waitingHint}>
-                      {visit.stage_status === 'in_progress' ? '▶ In progress' : 'Not waiting'}
-                    </Text>
-                    <TouchableOpacity
-                      style={[st.waitingBtn, st.markWaitingBtn]}
-                      onPress={() => handleStageWaiting('waiting')}
-                      disabled={waitingLoading}>
-                      <Text style={[st.waitingBtnText, { color: '#92400e' }]}>Mark Waiting</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            )}
 
             {(visit.stage_logs || []).length > 0 && (
               <View style={st.logBox}>
@@ -321,6 +399,83 @@ export default function AdminVisitDetailScreen({ route, navigation }) {
             ))}
           </View>
         )}
+
+        {/* Notes */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Notes {notes.length > 0 ? `(${notes.length})` : ''}</Text>
+          {notes.length === 0 && (
+            <Text style={sn.empty}>No notes yet. Add one below.</Text>
+          )}
+          {notes.map(n => (
+            <View key={n.id} style={sn.noteItem}>
+              <View style={sn.noteHeader}>
+                <Text style={sn.noteAuthor}>{n.author_name}</Text>
+                <Text style={sn.noteTime}>
+                  {new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                </Text>
+              </View>
+              <Text style={sn.noteText}>{n.note}</Text>
+            </View>
+          ))}
+          <View style={sn.inputRow}>
+            <TextInput
+              ref={noteInputRef}
+              style={sn.input}
+              placeholder="Add a note…"
+              placeholderTextColor={COLORS.textMuted}
+              value={noteText}
+              onChangeText={setNoteText}
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[sn.sendBtn, (!noteText.trim() || addingNote) && sn.sendBtnDisabled]}
+              onPress={submitNote}
+              disabled={!noteText.trim() || addingNote}>
+              {addingNote
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="send" size={16} color="#fff" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Next Visit */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Next Visit</Text>
+          {visit.next_visit_date ? (
+            <Text style={s.current}>
+              Scheduled: <Text style={{ color: COLORS.primary, fontWeight: '600' }}>
+                {new Date(String(visit.next_visit_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Text>
+            </Text>
+          ) : (
+            <Text style={s.current}>No next visit scheduled</Text>
+          )}
+          <View style={s.snvPresets}>
+            {[{ label: '1 Wk', days: 7 }, { label: '2 Wks', days: 14 }, { label: '3 Wks', days: 21 },
+              { label: '1 Mo', days: 30 }, { label: '3 Mo', days: 90 }].map(({ label, days }) => (
+              <TouchableOpacity key={days} style={s.snvChip} activeOpacity={0.7} onPress={() => applyPreset(days)} disabled={nextVisitSaving}>
+                <Text style={s.snvChipText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={s.snvChip} activeOpacity={0.7} onPress={() => { setPickerDate(new Date()); setShowDatePicker(true); }} disabled={nextVisitSaving}>
+              <Text style={s.snvChipText}>Custom</Text>
+            </TouchableOpacity>
+          </View>
+          {nextVisitSaving && <Text style={s.current}>Saving…</Text>}
+          {showDatePicker && (
+            <DateTimePicker
+              value={pickerDate}
+              mode="date"
+              minimumDate={new Date()}
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              onChange={(e, date) => {
+                setShowDatePicker(Platform.OS === 'ios');
+                if (date) { setPickerDate(date); saveNextVisit(date); }
+              }}
+            />
+          )}
+        </View>
 
         {/* Reassign */}
         <View style={s.card}>
@@ -422,6 +577,9 @@ const s = StyleSheet.create({
   actionBtn:    { borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   actionBtnText:{ color: '#fff', fontWeight: '700', fontSize: 14 },
   current:      { fontSize: 13, color: COLORS.textMuted, marginBottom: 10 },
+  snvPresets:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
+  snvChip:      { backgroundColor: '#eff0ff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  snvChipText:  { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
   reassignBtn:  { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#eff0ff',
                   paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   reassignText: { color: COLORS.primary, fontWeight: '600', fontSize: 14 },
@@ -448,7 +606,25 @@ const s = StyleSheet.create({
   empDesig:     { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
 });
 
+const sn = StyleSheet.create({
+  empty:      { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 10 },
+  noteItem:   { backgroundColor: COLORS.background, borderRadius: 10, padding: 10, marginBottom: 8,
+                borderWidth: 1, borderColor: COLORS.border },
+  noteHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  noteAuthor: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  noteTime:   { fontSize: 11, color: COLORS.textMuted },
+  noteText:   { fontSize: 13, color: COLORS.text, lineHeight: 19 },
+  inputRow:   { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+  input:      { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+                paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
+                color: COLORS.text, backgroundColor: '#fafafa', maxHeight: 100 },
+  sendBtn:        { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.primary,
+                    alignItems: 'center', justifyContent: 'center' },
+  sendBtnDisabled:{ backgroundColor: COLORS.border },
+});
+
 const st = StyleSheet.create({
+  stageHint:   { fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 },
   stageRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   stageBtn:    { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
                  borderWidth: 1.5, borderColor: COLORS.border },
