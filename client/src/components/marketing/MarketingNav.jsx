@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import DemoModal from '../DemoModal';
 import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
@@ -11,6 +12,7 @@ const NAV_ITEMS = [
 
 export default function MarketingNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [demoOpen,   setDemoOpen]   = useState(false);
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -29,6 +31,8 @@ export default function MarketingNav() {
   }
 
   return (
+    <>
+    {demoOpen && <DemoModal onClose={() => setDemoOpen(false)} />}
     <header className="fixed top-0 inset-x-0 z-50 bg-white/95 backdrop-blur shadow-sm">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
 
@@ -85,6 +89,12 @@ export default function MarketingNav() {
               >
                 Sign In
               </Link>
+              <button
+                onClick={() => setDemoOpen(true)}
+                className="text-sm font-semibold px-4 py-2 rounded-lg text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+              >
+                Book a Demo
+              </button>
               <Link
                 to="/register"
                 className="text-sm font-semibold px-4 py-2 rounded-lg text-white transition-all hover:opacity-90"
@@ -154,6 +164,12 @@ export default function MarketingNav() {
                 >
                   Sign In
                 </Link>
+                <button
+                  onClick={() => { setMobileOpen(false); setDemoOpen(true); }}
+                  className="text-sm font-semibold px-4 py-2.5 rounded-lg text-indigo-700 border border-indigo-200 bg-indigo-50 text-center"
+                >
+                  Book a Demo
+                </button>
                 <Link
                   to="/register"
                   onClick={() => setMobileOpen(false)}
@@ -168,5 +184,6 @@ export default function MarketingNav() {
         </div>
       )}
     </header>
+    </>
   );
 }

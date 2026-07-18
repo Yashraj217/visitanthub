@@ -41,6 +41,7 @@ app.use('/api/display',     require('./routes/display'));
 app.use('/api/scheduling',  require('./routes/scheduling'));
 app.use('/api/stages',      require('./routes/stages'));
 app.use('/api/billing',     require('./routes/billing'));
+app.use('/api/demo',        require('./routes/demo'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

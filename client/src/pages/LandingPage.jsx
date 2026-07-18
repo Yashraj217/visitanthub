@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import MarketingNav from '../components/marketing/MarketingNav';
 import MarketingFooter from '../components/marketing/MarketingFooter';
 import Seo from '../components/Seo';
 import { useFadeUp } from '../hooks/useFadeUp';
+import DemoModal from '../components/DemoModal';
 
 const JSON_LD = {
   '@context': 'https://schema.org',
@@ -410,6 +412,7 @@ function Stick({ color }) {
 }
 
 export default function LandingPage() {
+  const [demoOpen, setDemoOpen] = useState(false);
   const heroRef     = useFadeUp();
   const featuresRef = useFadeUp();
   const industriesRef = useFadeUp();
@@ -419,6 +422,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      {demoOpen && <DemoModal onClose={() => setDemoOpen(false)} />}
       <Seo
         path="/"
         description="VisitantHub is a Clinic Management Software and Visitor Management Software for hospitals, clinics, and offices. Features include digital patient check-in, doctor queuing, appointment scheduling, WhatsApp reminders, revisit tracking, and live TV display boards."
@@ -471,11 +475,11 @@ export default function LandingPage() {
                   style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
                   Start for Free →
                 </Link>
-                <a href="#features"
-                  onClick={e => { e.preventDefault(); scrollTo('features'); }}
+                <button
+                  onClick={() => setDemoOpen(true)}
                   className="px-8 py-4 rounded-xl text-base font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors text-center">
-                  See Features
-                </a>
+                  📅 Book a Demo
+                </button>
               </div>
 
               {/* Stats row */}
@@ -777,10 +781,17 @@ export default function LandingPage() {
           <p className="text-indigo-200 text-lg leading-relaxed mb-8">
             Join hundreds of offices that replaced paper sign-in books with VisitantHub.
           </p>
-          <Link to="/register"
-            className="inline-block px-10 py-4 rounded-xl text-base font-semibold text-indigo-700 bg-white shadow-xl hover:shadow-2xl transition-all hover:-translate-y-0.5">
-            Create Your Free Account →
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link to="/register"
+              className="inline-block px-10 py-4 rounded-xl text-base font-semibold text-indigo-700 bg-white shadow-xl hover:shadow-2xl transition-all hover:-translate-y-0.5">
+              Create Your Free Account →
+            </Link>
+            <button
+              onClick={() => setDemoOpen(true)}
+              className="inline-block px-10 py-4 rounded-xl text-base font-semibold text-white border-2 border-white/50 hover:bg-white/10 transition-all hover:-translate-y-0.5">
+              📅 Request a Demo
+            </button>
+          </div>
         </div>
       </section>
 

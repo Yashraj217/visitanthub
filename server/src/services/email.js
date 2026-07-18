@@ -456,4 +456,4 @@ async function sendAppointmentReminderEmail({ employeeName, employeeEmail, compa
   });
 }
 
-module.exports = { sendVerificationEmail, sendUserInvitation, sendPasswordResetOTP, sendBookingConfirmationEmail, sendVisitRejectionEmail, sendBookingCancellationEmail, sendAppointmentReminderEmail };
+module.exports = { sendMail, sendVerificationEmail, sendUserInvitation, sendPasswordResetOTP, sendBookingConfirmationEmail, sendVisitRejectionEmail, sendBookingCancellationEmail, sendAppointmentReminderEmail };
