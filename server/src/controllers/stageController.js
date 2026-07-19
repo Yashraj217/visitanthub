@@ -174,35 +174,33 @@ async function advanceStage(req, res) {
       return res.json({ message: 'Stage cleared' });
     }
 
-    // Fetch the target stage
+    // Fetch the target stage (with its assigned employee)
     const [[stage]] = await conn.query(
-      'SELECT id, name, color, is_final, employee_id FROM visit_stages WHERE id = ? AND company_id = ?',
+      `SELECT vs.id, vs.name, vs.color, vs.is_final, vs.employee_id,
+              e.name AS employee_name
+       FROM visit_stages vs
+       LEFT JOIN employees e ON e.id = vs.employee_id
+       WHERE vs.id = ? AND vs.company_id = ?`,
       [stageId, req.user.company_id]
     );
     if (!stage) { await conn.rollback(); return res.status(404).json({ message: 'Stage not found' }); }
 
-    const employeeChanging = stage.employee_id && stage.employee_id !== visit.employee_id;
+    // Close off the previous stage log (set exited_at = NOW())
+    await conn.query(
+      'UPDATE visit_stage_logs SET exited_at = NOW() WHERE visit_id = ? AND exited_at IS NULL',
+      [visitId]
+    );
 
-    // Update visit's current stage; re-route to stage's employee if one is assigned; reset waiting state
-    // If employee changes, reset status to pending so visit re-enters new associate's queue properly
+    // Update visit's current stage only — primary associate (employee_id) never changes
     // If stage is final, auto-complete the visit
     const updateFields = [
       'current_stage_id = ?', 'current_stage_name = ?', 'current_stage_color = ?',
       'stage_status = NULL', 'stage_waiting_since = NULL',
     ];
     const updateValues = [stage.id, stage.name, stage.color];
-    if (stage.employee_id) {
-      updateFields.push('employee_id = ?');
-      updateValues.push(stage.employee_id);
-    }
     if (stage.is_final) {
       updateFields.push('status = ?');
       updateValues.push('completed');
-    } else if (employeeChanging) {
-      // Reset status to pending so visitor re-enters the new associate's queue
-      // Update visit_time to NOW() so visitor lands at the END of the new queue (not the front)
-      updateFields.push('status = ?', 'approved_at = NULL', 'visit_time = NOW()');
-      updateValues.push('pending');
     }
     updateValues.push(visitId);
     await conn.query(
@@ -210,27 +208,23 @@ async function advanceStage(req, res) {
       updateValues
     );
 
-    // Log this stage entry
+    // Log this stage entry with the stage's assigned employee for time attribution
     const [userRow] = await conn.query('SELECT name FROM users WHERE id = ?', [req.user.id]);
     const enteredByName = userRow[0]?.name || null;
 
     await conn.query(
-      `INSERT INTO visit_stage_logs (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [visitId, stage.id, stage.name, stage.color, req.user.id, enteredByName]
+      `INSERT INTO visit_stage_logs
+         (visit_id, stage_id, stage_name, color, entered_by_user_id, entered_by_name,
+          stage_employee_id, stage_employee_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [visitId, stage.id, stage.name, stage.color, req.user.id, enteredByName,
+       stage.employee_id || null, stage.employee_name || null]
     );
 
     await conn.commit();
 
-    // Recalculate ready queue for affected employees (after commit, fire-and-forget)
-    if (employeeChanging) {
-      const { promoteNextReady } = require('./visitController');
-      const [[company]] = await pool.query('SELECT timezone FROM companies WHERE id = ?', [visit.company_id]);
-      const tz = company?.timezone || 'UTC';
-      promoteNextReady(visit.employee_id, visit.company_id, tz);
-      promoteNextReady(stage.employee_id, visit.company_id, tz);
-
-      // Notify the new associate via push
+    // Notify the stage's assigned employee (if any) via push — they need to know the visitor arrived
+    if (stage.employee_id) {
       pool.query(
         `SELECT u.push_token FROM users u
          WHERE u.employee_id = ? AND u.push_token IS NOT NULL LIMIT 1`,
@@ -239,17 +233,18 @@ async function advanceStage(req, res) {
         if (row?.push_token) {
           sendPush({
             token: row.push_token,
-            title: 'Visitor Arrived at Your Stage',
-            body: `A visitor has been moved to: ${stage.name}`,
+            title: 'Visitor at Your Stage',
+            body: `A visitor has arrived at stage: ${stage.name}`,
             data: { visitId },
           });
         }
       }).catch(() => {});
     }
 
-    // Return updated stage info + full log
+    // Return updated stage info + full log with timing
     const [logs] = await pool.query(
-      `SELECT stage_name, color, entered_at, entered_by_name
+      `SELECT stage_name, color, entered_at, exited_at, entered_by_name,
+              stage_employee_id, stage_employee_name
        FROM visit_stage_logs WHERE visit_id = ? ORDER BY entered_at ASC`,
       [visitId]
     );
@@ -259,7 +254,7 @@ async function advanceStage(req, res) {
       current_stage_name:  stage.name,
       current_stage_color: stage.color,
       is_final:            !!stage.is_final,
-      status_reset:        stage.is_final ? 'completed' : (employeeChanging ? 'pending' : undefined),
+      status_reset:        stage.is_final ? 'completed' : undefined,
       logs,
     });
     broadcast(visit.company_id);
@@ -284,7 +279,8 @@ async function getStageLogs(req, res) {
     }
 
     const [logs] = await pool.query(
-      `SELECT stage_name, color, entered_at, entered_by_name
+      `SELECT stage_name, color, entered_at, exited_at, entered_by_name,
+              stage_employee_id, stage_employee_name
        FROM visit_stage_logs WHERE visit_id = ? ORDER BY entered_at ASC`,
       [visitId]
     );

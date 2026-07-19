@@ -953,18 +953,31 @@ export default function Visits() {
                       </div>
                     )}
 
-                    {/* Stage history log */}
+                    {/* Stage history log with time spent */}
                     {(selected.stage_logs || []).length > 0 && (
-                      <div className="space-y-1">
-                        {(selected.stage_logs || []).map((log, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: log.color || '#6366f1' }} />
-                            <span className="font-medium text-gray-700">{log.stage_name}</span>
-                            <span>·</span>
-                            <span>{new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
-                            {log.entered_by_name && <><span>·</span><span>{log.entered_by_name}</span></>}
-                          </div>
-                        ))}
+                      <div className="space-y-1.5">
+                        {(selected.stage_logs || []).map((log, i) => {
+                          const start = new Date(log.entered_at);
+                          const end   = log.exited_at ? new Date(log.exited_at) : new Date();
+                          const mins  = Math.round((end - start) / 60000);
+                          const dur   = mins < 1 ? '<1m' : mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h ${mins%60}m`;
+                          const still = !log.exited_at;
+                          return (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: log.color || '#6366f1' }} />
+                              <div className="flex-1 min-w-0">
+                                <span className="font-semibold text-gray-800">{log.stage_name}</span>
+                                {log.stage_employee_name && (
+                                  <span className="text-gray-400 ml-1">· {log.stage_employee_name}</span>
+                                )}
+                                <span className="ml-1 text-gray-400">· {new Date(log.entered_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <span className={`font-semibold shrink-0 ${still ? 'text-indigo-600' : 'text-gray-500'}`}>
+                                {still ? `${dur} ●` : dur}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

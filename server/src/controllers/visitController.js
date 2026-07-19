@@ -176,7 +176,14 @@ async function getOne(req, res) {
       return res.status(403).json({ message: 'Access denied' });
     }
     if (req.user.role === 'company_user' && visit.employee_id !== req.user.employee_id) {
-      return res.status(403).json({ message: 'Access denied' });
+      // Also allow if this user is the stage associate currently handling the visit
+      const [[stageAccess]] = await pool.query(
+        `SELECT 1 FROM visit_stages vs
+         WHERE vs.id = ? AND vs.employee_id = ? AND vs.company_id = ?`,
+        [visit.current_stage_id, req.user.employee_id, req.user.company_id]
+      );
+      if (!stageAccess) return res.status(403).json({ message: 'Access denied' });
+      visit.is_stage_visitor = true; // flag so frontend knows this is a stage-only view
     }
     // Attach custom field values with hidden flag from service_fields
     const [fieldValues] = await pool.query(
@@ -194,9 +201,10 @@ async function getOne(req, res) {
       field_options: f.field_options ? JSON.parse(f.field_options) : [],
     }));
 
-    // Attach stage history
+    // Attach stage history with timing and attribution
     const [stageLogs] = await pool.query(
-      `SELECT stage_name, color, entered_at, entered_by_name
+      `SELECT stage_name, color, entered_at, exited_at, entered_by_name,
+              stage_employee_id, stage_employee_name
        FROM visit_stage_logs WHERE visit_id = ? ORDER BY entered_at ASC`,
       [visit.id]
     );
@@ -224,7 +232,7 @@ async function updateStatus(req, res) {
     );
     if (!visit) return res.status(404).json({ message: 'Visit not found' });
     if (req.user.role === 'company_user' && visit.employee_id !== req.user.employee_id) {
-      return res.status(403).json({ message: 'Access denied' });
+      return res.status(403).json({ message: 'Only the primary associate can approve or reject this visit' });
     }
 
     // ── Queue-jump guard (approval only) ─────────────────────────────────

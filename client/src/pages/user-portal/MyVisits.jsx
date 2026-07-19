@@ -631,20 +631,25 @@ export default function MyVisits() {
                   </p>
                 </div>
                 <div className="mt-3 flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
-                  {v.status === 'pending' && (<>
-                    <button onClick={e => updateStatus(v.id, 'approved', e)}
-                      className="text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 font-medium">Approve</button>
-                    <button onClick={e => updateStatus(v.id, 'rejected', e)}
-                      className="text-xs px-3 py-1 rounded-lg bg-red-100 text-red-700 font-medium">Reject</button>
-                  </>)}
-                  {v.status === 'approved' && (
-                    <button onClick={e => updateStatus(v.id, 'completed', e)}
-                      className="text-xs px-3 py-1 rounded-lg bg-blue-100 text-blue-700 font-medium">Complete</button>
-                  )}
-                  {(v.status === 'pending' || v.status === 'approved') && (
-                    <button onClick={e => startReassign(v, e)}
-                      className="text-xs px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-medium">Reassign</button>
-                  )}
+                  {v.employee_id !== user?.employee_id
+                    ? <span className="text-xs px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 font-semibold">📍 At your stage</span>
+                    : (<>
+                        {v.status === 'pending' && (<>
+                          <button onClick={e => updateStatus(v.id, 'approved', e)}
+                            className="text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 font-medium">Approve</button>
+                          <button onClick={e => updateStatus(v.id, 'rejected', e)}
+                            className="text-xs px-3 py-1 rounded-lg bg-red-100 text-red-700 font-medium">Reject</button>
+                        </>)}
+                        {v.status === 'approved' && (
+                          <button onClick={e => updateStatus(v.id, 'completed', e)}
+                            className="text-xs px-3 py-1 rounded-lg bg-blue-100 text-blue-700 font-medium">Complete</button>
+                        )}
+                        {(v.status === 'pending' || v.status === 'approved') && (
+                          <button onClick={e => startReassign(v, e)}
+                            className="text-xs px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-medium">Reassign</button>
+                        )}
+                      </>)
+                  }
                 </div>
               </div>
             ))}
@@ -735,26 +740,31 @@ export default function MyVisits() {
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <div className="flex flex-wrap gap-1">
-                        {v.status === 'pending' && (
-                          <>
-                            <button onClick={e => updateStatus(v.id, 'approved', e)}
-                              className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200">Approve</button>
-                            <button onClick={e => updateStatus(v.id, 'rejected', e)}
-                              className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200">Reject</button>
-                          </>
-                        )}
-                        {v.status === 'approved' && (
-                          <button onClick={e => updateStatus(v.id, 'completed', e)}
-                            className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">Complete</button>
-                        )}
-                        {(v.status === 'pending' || v.status === 'approved') && (
-                          <button onClick={e => startReassign(v, e)}
-                            className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
-                            Reassign
-                          </button>
-                        )}
-                      </div>
+                      {v.employee_id !== user?.employee_id
+                        ? <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-semibold">📍 At your stage</span>
+                        : (
+                          <div className="flex flex-wrap gap-1">
+                            {v.status === 'pending' && (
+                              <>
+                                <button onClick={e => updateStatus(v.id, 'approved', e)}
+                                  className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200">Approve</button>
+                                <button onClick={e => updateStatus(v.id, 'rejected', e)}
+                                  className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200">Reject</button>
+                              </>
+                            )}
+                            {v.status === 'approved' && (
+                              <button onClick={e => updateStatus(v.id, 'completed', e)}
+                                className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">Complete</button>
+                            )}
+                            {(v.status === 'pending' || v.status === 'approved') && (
+                              <button onClick={e => startReassign(v, e)}
+                                className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+                                Reassign
+                              </button>
+                            )}
+                          </div>
+                        )
+                      }
                     </td>
 
                     {/* Hidden field value cells — click opens detail popup for editing */}
